@@ -1,10 +1,10 @@
-import Dashboard from "@/components/Dashboard";
 import Layout from "@/components/Layout";
+import DashboardClient from "@/components/DashboardClient";
 
 export default function HomePage() {
   return (
     <Layout>
-      <Dashboard />
+      <DashboardClient />
     </Layout>
   );
 }

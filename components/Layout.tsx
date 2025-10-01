@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -25,7 +26,13 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { ProfileModal } from "@/components/ProfileModal";
+const ProfileModal = dynamic(
+  () => import("@/components/ProfileModal").then((m) => m.ProfileModal),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -154,9 +161,9 @@ export default function Layout({ children }: LayoutProps) {
               alt="JSC Logo"
               width={160}
               height={160}
-              priority
               className="object-contain transition-transform duration-300 hover:scale-105"
               sizes="160px"
+              unoptimized
             />
           </div>
 
@@ -221,6 +228,7 @@ export default function Layout({ children }: LayoutProps) {
                 height={60}
                 className="object-contain mb-4 transition-transform duration-300 hover:scale-105"
                 style={{ height: "auto" }}
+                unoptimized
               />
               {/* Removed Logout Button from Sidebar */}
             </div>

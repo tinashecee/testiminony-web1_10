@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import React, { useState, useEffect, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
-import { 
-  FileText, 
-  Users, 
-  Building2, 
-  HardDrive, 
-  Clock, 
+import React, { useState, useEffect, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  FileText,
+  Users,
+  Building2,
+  HardDrive,
+  Clock,
   AlertTriangle,
   BarChart3,
   Calendar,
@@ -17,34 +17,44 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  RefreshCw
-} from "lucide-react"
-import { Progress } from "@/components/ui/progress"
-import { cn, formatDuration, getCourtNameForRecording } from "@/lib/utils"
+  RefreshCw,
+} from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { cn, formatDuration, getCourtNameForRecording } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useRouter } from "next/navigation"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useRouter } from "next/navigation";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { recordingsApi, type Recording, type Court, type Courtroom, type User } from "@/services/api"
-import { AddRecordingModal } from "./recording/AddRecordingModal"
-import { showUploadProgress } from "@/components/ui/upload-progress"
-
-
-
-
+} from "@/components/ui/select";
+import {
+  recordingsApi,
+  type Recording,
+  type Court,
+  type Courtroom,
+  type User,
+} from "@/services/api";
+import dynamic from "next/dynamic";
+const AddRecordingModal = dynamic(
+  () =>
+    import("./recording/AddRecordingModal").then((m) => m.AddRecordingModal),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
+import { showUploadProgress } from "@/components/ui/upload-progress";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -57,11 +67,13 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [retryAttempt, setRetryAttempt] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [cacheStatus, setCacheStatus] = useState<'cached' | 'fresh' | 'unknown'>('unknown');
+  const [cacheStatus, setCacheStatus] = useState<
+    "cached" | "fresh" | "unknown"
+  >("unknown");
 
-  const [isAddRecordingOpen, setIsAddRecordingOpen] = useState(false)
-  const [courts, setCourts] = useState<Court[]>([])
-  const [courtrooms, setCourtrooms] = useState<Courtroom[]>([])
+  const [isAddRecordingOpen, setIsAddRecordingOpen] = useState(false);
+  const [courts, setCourts] = useState<Court[]>([]);
+  const [courtrooms, setCourtrooms] = useState<Courtroom[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentFileName, setCurrentFileName] = useState<string>("");
 
@@ -69,36 +81,49 @@ export default function Dashboard() {
   const getCurrentMonthYear = () => {
     const now = new Date();
     const monthNames = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
     return `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
   };
 
   // Calculate dynamic stats based on real data
-  const stats = useMemo(() => [
-    {
-      title: "Total Recordings",
-      value: recordings.length.toLocaleString(),
-      icon: FileText,
-      description: "Audio recordings across all courts",
-      change: `${recordings.length} recordings total`
-    },
-    {
-      title: "Active Users",
-      value: users.length.toString(),
-      icon: Users,
-      description: "Currently registered users",
-      change: `${users.length} users registered`
-    },
-    {
-      title: "Active Courts",
-      value: courts.length.toString(),
-      icon: Building2,
-      description: "Connected courtrooms",
-      change: `${courts.length} courts active`
-    }
-  ], [recordings.length, users.length, courts.length]);
+  const stats = useMemo(
+    () => [
+      {
+        title: "Total Recordings",
+        value: recordings.length.toLocaleString(),
+        icon: FileText,
+        description: "Audio recordings across all courts",
+        change: `${recordings.length} recordings total`,
+      },
+      {
+        title: "Active Users",
+        value: users.length.toString(),
+        icon: Users,
+        description: "Currently registered users",
+        change: `${users.length} users registered`,
+      },
+      {
+        title: "Active Courts",
+        value: courts.length.toString(),
+        icon: Building2,
+        description: "Connected courtrooms",
+        change: `${courts.length} courts active`,
+      },
+    ],
+    [recordings.length, users.length, courts.length]
+  );
 
   // Fetch recordings with improved error handling and cache awareness
   const fetchRecordings = async (forceRefresh = false) => {
@@ -109,16 +134,17 @@ export default function Dashboard() {
         setIsLoading(true);
       }
       setError(null);
-      
+
       const data = await recordingsApi.getAllRecordings(forceRefresh);
       setRecordings(data);
       setRetryAttempt(0); // Reset retry count on success
-      setCacheStatus(forceRefresh ? 'fresh' : 'cached');
+      setCacheStatus(forceRefresh ? "fresh" : "cached");
     } catch (error) {
       console.error("Error fetching recordings:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to fetch recordings";
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch recordings";
       setError(errorMessage);
-      setRetryAttempt(prev => prev + 1);
+      setRetryAttempt((prev) => prev + 1);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -143,61 +169,51 @@ export default function Dashboard() {
 
   // Fetch courts, courtrooms, and users (non-critical data)
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch these in parallel but handle failures gracefully
-        const results = await Promise.allSettled([
-          recordingsApi.getCourts(),
-          recordingsApi.getCourtrooms(),
-          recordingsApi.getUsers()
-        ]);
+    const scheduleIdleFetch = () => {
+      const run = async () => {
+        try {
+          const results = await Promise.allSettled([
+            recordingsApi.getCourts(),
+            recordingsApi.getCourtrooms(),
+            recordingsApi.getUsers(),
+          ]);
 
-        // Handle courts data
-        if (results[0].status === 'fulfilled') {
-          setCourts(results[0].value);
-        } else {
-          console.warn("Failed to fetch courts:", results[0].reason);
-          setCourts([]); // Set empty array as fallback
+          if (results[0].status === "fulfilled") setCourts(results[0].value);
+          if (results[1].status === "fulfilled")
+            setCourtrooms(results[1].value);
+          if (results[2].status === "fulfilled") setUsers(results[2].value);
+        } catch (error) {
+          console.error("Idle fetch error:", error);
         }
+      };
 
-        // Handle courtrooms data
-        if (results[1].status === 'fulfilled') {
-          setCourtrooms(results[1].value);
-        } else {
-          console.warn("Failed to fetch courtrooms:", results[1].reason);
-          setCourtrooms([]); // Set empty array as fallback
-        }
-
-        // Handle users data
-        if (results[2].status === 'fulfilled') {
-          setUsers(results[2].value);
-        } else {
-          console.warn("Failed to fetch users:", results[2].reason);
-          setUsers([]); // Set empty array as fallback
-        }
-      } catch (error) {
-        console.error("Error fetching supplementary data:", error);
-        // Set defaults so the component doesn't break
-        setCourts([]);
-        setCourtrooms([]);
-        setUsers([]);
+      // Prefer requestIdleCallback if available, else timeout
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        (window as any).requestIdleCallback(run, { timeout: 3000 });
+      } else {
+        setTimeout(run, 1500);
       }
     };
 
-    fetchData();
+    scheduleIdleFetch();
   }, []);
 
   // Filter recordings based on search and sort by date
   const filteredRecordings = useMemo(() => {
     return recordings
-      .filter((recording) =>
-        recording.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        recording.case_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        recording.judge_name.toLowerCase().includes(searchQuery.toLowerCase())
+      .filter(
+        (recording) =>
+          recording.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          recording.case_number
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          recording.judge_name.toLowerCase().includes(searchQuery.toLowerCase())
       )
       .sort((a, b) => {
         // Sort by date_stamp in descending order (most recent first)
-        return new Date(b.date_stamp).getTime() - new Date(a.date_stamp).getTime();
+        return (
+          new Date(b.date_stamp).getTime() - new Date(a.date_stamp).getTime()
+        );
       });
   }, [recordings, searchQuery]);
 
@@ -210,30 +226,35 @@ export default function Dashboard() {
   // Calculate total pages
   const totalPages = Math.ceil(filteredRecordings.length / pageSize);
 
-
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between animate-[fadeInDown_0.5s_ease-out]">
-        <h1 className="text-3xl font-bold transition-all duration-300 hover:text-[#1B4D3E]">Dashboard</h1>
+        <h1 className="text-3xl font-bold transition-all duration-300 hover:text-[#1B4D3E]">
+          Dashboard
+        </h1>
         <div className="flex items-center gap-4">
-          <Button 
+          <Button
             onClick={() => setIsAddRecordingOpen(true)}
-            className="gap-2 transition-all duration-200 hover:scale-105 hover:shadow-lg group"
-          >
+            className="gap-2 transition-all duration-200 hover:scale-105 hover:shadow-lg group">
             <Plus className="h-4 w-4 transition-transform duration-200 group-hover:rotate-90" />
             <span className="transition-all duration-200">Add Recording</span>
           </Button>
-          <Button variant="outline" className="gap-2 transition-all duration-200 hover:scale-105 hover:shadow-md group">
+          <Button
+            variant="outline"
+            className="gap-2 transition-all duration-200 hover:scale-105 hover:shadow-md group">
             <Calendar className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
-            <span className="transition-all duration-200">{getCurrentMonthYear()}</span>
+            <span className="transition-all duration-200">
+              {getCurrentMonthYear()}
+            </span>
           </Button>
         </div>
       </div>
 
       {/* Error State */}
       {error && (
-        <Alert variant="destructive" className="animate-[fadeInDown_0.3s_ease-out]">
+        <Alert
+          variant="destructive"
+          className="animate-[fadeInDown_0.3s_ease-out]">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Connection Error</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
@@ -245,14 +266,15 @@ export default function Dashboard() {
                 </span>
               )}
             </span>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={fetchRecordings}
               disabled={isLoading}
-              className="ml-4 gap-2"
-            >
-              <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+              className="ml-4 gap-2">
+              <RefreshCw
+                className={cn("h-4 w-4", isLoading && "animate-spin")}
+              />
               {isLoading ? "Retrying..." : "Retry"}
             </Button>
           </AlertDescription>
@@ -262,14 +284,13 @@ export default function Dashboard() {
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat, index) => (
-          <Card 
+          <Card
             key={stat.title}
             className="transition-all duration-300 hover:shadow-lg hover:scale-105 hover:-translate-y-1 cursor-pointer group"
-            style={{ 
+            style={{
               animationDelay: `${index * 150}ms`,
-              animation: 'fadeInUp 0.6s ease-out forwards'
-            }}
-          >
+              animation: "fadeInUp 0.6s ease-out forwards",
+            }}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium transition-colors duration-200 group-hover:text-[#1B4D3E]">
                 {stat.title}
@@ -277,7 +298,9 @@ export default function Dashboard() {
               <stat.icon className="h-4 w-4 text-muted-foreground transition-all duration-300 group-hover:text-[#1B4D3E] group-hover:scale-110" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold transition-all duration-300 group-hover:text-[#1B4D3E]">{stat.value}</div>
+              <div className="text-2xl font-bold transition-all duration-300 group-hover:text-[#1B4D3E]">
+                {stat.value}
+              </div>
               <p className="text-xs text-muted-foreground mt-1 transition-colors duration-200">
                 {stat.description}
               </p>
@@ -295,14 +318,16 @@ export default function Dashboard() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <CardTitle className="text-lg transition-colors duration-200 hover:text-[#1B4D3E]">Recent Recordings</CardTitle>
-                {cacheStatus === 'cached' && (
+                <CardTitle className="text-lg transition-colors duration-200 hover:text-[#1B4D3E]">
+                  Recent Recordings
+                </CardTitle>
+                {cacheStatus === "cached" && (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                     <span>Cached</span>
                   </div>
                 )}
-                {cacheStatus === 'fresh' && (
+                {cacheStatus === "fresh" && (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                     <span>Fresh</span>
@@ -315,10 +340,13 @@ export default function Dashboard() {
                   size="sm"
                   onClick={refreshRecordings}
                   disabled={isRefreshing}
-                  className="transition-all duration-200 hover:bg-[#1B4D3E]/10 hover:border-[#1B4D3E] focus:ring-2 focus:ring-[#1B4D3E]/20"
-                >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                  className="transition-all duration-200 hover:bg-[#1B4D3E]/10 hover:border-[#1B4D3E] focus:ring-2 focus:ring-[#1B4D3E]/20">
+                  <RefreshCw
+                    className={`h-4 w-4 mr-2 ${
+                      isRefreshing ? "animate-spin" : ""
+                    }`}
+                  />
+                  {isRefreshing ? "Refreshing..." : "Refresh"}
                 </Button>
                 <div className="relative group">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground transition-colors duration-200 group-focus-within:text-[#1B4D3E]" />
@@ -365,24 +393,43 @@ export default function Dashboard() {
                       key={recording.id}
                       className="flex items-center justify-between p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted/70 transition-all duration-200 hover:scale-[1.02] hover:shadow-md group"
                       onClick={() => handleRecordingClick(recording.id)}
-                      style={{ 
+                      style={{
                         animationDelay: `${index * 100}ms`,
-                        animation: 'slideInRight 0.4s ease-out forwards'
-                      }}
-                    >
+                        animation: "slideInRight 0.4s ease-out forwards",
+                      }}>
                       <div className="space-y-1">
-                        <p className="text-sm font-medium transition-colors duration-200 group-hover:text-[#1B4D3E]">{recording.title}</p>
+                        <p className="text-sm font-medium transition-colors duration-200 group-hover:text-[#1B4D3E]">
+                          {recording.title}
+                        </p>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground transition-colors duration-200">
-                          <span className="font-medium">Case #{recording.case_number}</span>
+                          <span className="font-medium">
+                            Case #{recording.case_number}
+                          </span>
                           <span>•</span>
-                          <span>{getCourtNameForRecording(recording, courts, courtrooms)} - {recording.courtroom}</span>
+                          <span>
+                            {getCourtNameForRecording(
+                              recording,
+                              courts,
+                              courtrooms
+                            )}{" "}
+                            - {recording.courtroom}
+                          </span>
                           <span>•</span>
-                          <span>Duration: {formatDuration(recording.duration)}</span>
+                          <span>
+                            Duration: {formatDuration(recording.duration)}
+                          </span>
                           <span>•</span>
-                          <span>{new Date(recording.date_stamp).toLocaleDateString()}</span>
+                          <span>
+                            {new Date(
+                              recording.date_stamp
+                            ).toLocaleDateString()}
+                          </span>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" className="transition-all duration-200 group-hover:scale-110 group-hover:bg-[#1B4D3E]/10">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="transition-all duration-200 group-hover:scale-110 group-hover:bg-[#1B4D3E]/10">
                         <FileText className="h-4 w-4 transition-colors duration-200 group-hover:text-[#1B4D3E]" />
                       </Button>
                     </div>
@@ -398,21 +445,23 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        onClick={() =>
+                          setCurrentPage((prev) => Math.max(1, prev - 1))
+                        }
                         disabled={currentPage === 1}
-                        className="transition-all duration-200 hover:scale-105 hover:shadow-md disabled:hover:scale-100 disabled:hover:shadow-none group"
-                      >
+                        className="transition-all duration-200 hover:scale-105 hover:shadow-md disabled:hover:scale-100 disabled:hover:shadow-none group">
                         <ChevronLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                          setCurrentPage((prev) =>
+                            Math.min(totalPages, prev + 1)
+                          )
                         }
                         disabled={currentPage === totalPages}
-                        className="transition-all duration-200 hover:scale-105 hover:shadow-md disabled:hover:scale-100 disabled:hover:shadow-none group"
-                      >
+                        className="transition-all duration-200 hover:scale-105 hover:shadow-md disabled:hover:scale-100 disabled:hover:shadow-none group">
                         <ChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                       </Button>
                     </div>
@@ -422,10 +471,6 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-
-
-
-
       </div>
 
       <AddRecordingModal
@@ -465,6 +510,5 @@ export default function Dashboard() {
         }}
       />
     </div>
-  )
+  );
 }
-

@@ -230,11 +230,11 @@ export const recordingsApi = {
         );
       }
       const data = await response.json();
-      
+
       // Cache the data for 5 minutes
       cacheService.set(CACHE_KEYS.RECORDINGS, data, 5 * 60 * 1000);
       console.log("💾 Recordings cached successfully");
-      
+
       return data;
     } catch (error) {
       console.error("Error in getAllRecordings:", error);
@@ -257,11 +257,11 @@ export const recordingsApi = {
       throw new Error("Failed to fetch recording");
     }
     const data = await response.json();
-    
+
     // Cache individual recording for 10 minutes
     cacheService.set(cacheKey, data, 10 * 60 * 1000);
     console.log(`💾 Recording ${id} cached successfully`);
-    
+
     return data;
   },
 
@@ -317,11 +317,11 @@ export const recordingsApi = {
         );
       }
       const data = await response.json();
-      
+
       // Cache courts for 15 minutes (they change less frequently)
       cacheService.set(CACHE_KEYS.COURTS, data, 15 * 60 * 1000);
       console.log("💾 Courts cached successfully");
-      
+
       return data;
     } catch (error) {
       console.error("Error in getCourts:", error);
@@ -346,11 +346,11 @@ export const recordingsApi = {
         );
       }
       const data = await response.json();
-      
+
       // Cache courtrooms for 15 minutes (they change less frequently)
       cacheService.set(CACHE_KEYS.COURTROOMS, data, 15 * 60 * 1000);
       console.log("💾 Courtrooms cached successfully");
-      
+
       return data;
     } catch (error) {
       console.error("Error in getCourtrooms:", error);
@@ -424,7 +424,7 @@ export const recordingsApi = {
     if (!response.ok) {
       throw new Error("Failed to add user");
     }
-    
+
     // Invalidate users cache
     cacheService.delete(CACHE_KEYS.USERS);
     console.log("🗑️ Users cache invalidated after adding user");
@@ -449,11 +449,11 @@ export const recordingsApi = {
         );
       }
       const data = await response.json();
-      
+
       // Cache users for 10 minutes
       cacheService.set(CACHE_KEYS.USERS, data, 10 * 60 * 1000);
       console.log("💾 Users cached successfully");
-      
+
       return data;
     } catch (error) {
       console.error("Error in getUsers:", error);
@@ -560,7 +560,14 @@ export const recordingsApi = {
       });
 
       if (!response.ok) {
-        throw new Error("Logout failed");
+        // Treat 401/403/404 as successful logout since the session is effectively ended
+        if (
+          response.status !== 401 &&
+          response.status !== 403 &&
+          response.status !== 404
+        ) {
+          throw new Error("Logout failed");
+        }
       }
 
       // Clear the token cookie (attempt both with and without Secure to cover both envs)
@@ -569,13 +576,12 @@ export const recordingsApi = {
       document.cookie =
         "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; samesite=lax; secure";
     } catch (error) {
-      console.error("Logout error:", error);
-      // Still clear the cookie even if the request fails
+      // Still clear the cookie even if the request fails, and do not rethrow to avoid noisy UI errors
       document.cookie =
         "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; samesite=lax";
       document.cookie =
         "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; samesite=lax; secure";
-      throw error;
+      return;
     }
   },
 

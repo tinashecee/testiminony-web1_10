@@ -1,14 +1,21 @@
 import { NextRequest } from "next/server";
 
-const TARGET_BASE = process.env.BACKEND_BASE_URL || "http://142.93.56.4:5000";
+const TARGET_BASE =
+  process.env.BACKEND_BASE_URL ||
+  (process.env.NODE_ENV === "production"
+    ? "https://testimonyapi.soxfort.com/api"
+    : "http://142.93.56.4:5000");
 
 function buildTargetUrl(path: string[], req: NextRequest): string {
-  const joinedPath = path?.length ? `/${path.join('/')}` : '';
-  const search = req.nextUrl.search ? req.nextUrl.search : '';
+  const joinedPath = path?.length ? `/${path.join("/")}` : "";
+  const search = req.nextUrl.search ? req.nextUrl.search : "";
   return `${TARGET_BASE}${joinedPath}${search}`;
 }
 
-async function forward(req: NextRequest, context: { params: { path: string[] } }) {
+async function forward(
+  req: NextRequest,
+  context: { params: { path: string[] } }
+) {
   const headers = new Headers(req.headers);
   headers.delete("host");
   headers.delete("content-length");
@@ -30,10 +37,13 @@ async function forward(req: NextRequest, context: { params: { path: string[] } }
   let res = await fetch(targetUrl, init);
 
   // Fallback: try with "/api" prefix if upstream returns 404 and base doesn't already include it
-  const baseHasApi = /\/api\/?$/.test(TARGET_BASE) || /\/api\//.test(TARGET_BASE);
+  const baseHasApi =
+    /\/api\/?$/.test(TARGET_BASE) || /\/api\//.test(TARGET_BASE);
   if (res.status === 404 && !baseHasApi) {
-    const joinedPath = context.params.path?.length ? `/${context.params.path.join('/')}` : '';
-    const search = req.nextUrl.search ? req.nextUrl.search : '';
+    const joinedPath = context.params.path?.length
+      ? `/${context.params.path.join("/")}`
+      : "";
+    const search = req.nextUrl.search ? req.nextUrl.search : "";
     const fallbackUrl = `${TARGET_BASE}/api${joinedPath}${search}`;
     const fallbackRes = await fetch(fallbackUrl, init);
     if (fallbackRes.ok || fallbackRes.status !== 404) {
@@ -53,30 +63,47 @@ async function forward(req: NextRequest, context: { params: { path: string[] } }
   });
 }
 
-export async function GET(req: NextRequest, context: { params: { path: string[] } }) {
+export async function GET(
+  req: NextRequest,
+  context: { params: { path: string[] } }
+) {
   return forward(req, context);
 }
 
-export async function POST(req: NextRequest, context: { params: { path: string[] } }) {
+export async function POST(
+  req: NextRequest,
+  context: { params: { path: string[] } }
+) {
   return forward(req, context);
 }
 
-export async function PUT(req: NextRequest, context: { params: { path: string[] } }) {
+export async function PUT(
+  req: NextRequest,
+  context: { params: { path: string[] } }
+) {
   return forward(req, context);
 }
 
-export async function PATCH(req: NextRequest, context: { params: { path: string[] } }) {
+export async function PATCH(
+  req: NextRequest,
+  context: { params: { path: string[] } }
+) {
   return forward(req, context);
 }
 
-export async function DELETE(req: NextRequest, context: { params: { path: string[] } }) {
+export async function DELETE(
+  req: NextRequest,
+  context: { params: { path: string[] } }
+) {
   return forward(req, context);
 }
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function OPTIONS(req: NextRequest, context: { params: { path: string[] } }) {
+export async function OPTIONS(
+  req: NextRequest,
+  context: { params: { path: string[] } }
+) {
   return forward(req, context);
 }
-

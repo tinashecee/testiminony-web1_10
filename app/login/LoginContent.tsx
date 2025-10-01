@@ -38,15 +38,15 @@ export default function LoginContent() {
 
     try {
       const loginResponse = await recordingsApi.loginUser(email, password);
-      console.log('🔍 Login successful, token received');
-      auditLogger.login(email, true, 'Successful login from login page');
-      await new Promise(resolve => setTimeout(resolve, 200));
-      console.log('🔍 About to refresh user data...');
+      console.log("🔍 Login successful, token received");
+      auditLogger.login(email, true, "Successful login from login page");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      console.log("🔍 About to refresh user data...");
       await refreshUser();
-      console.log('🔍 User details refreshed');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log("🔍 User details refreshed");
+      await new Promise((resolve) => setTimeout(resolve, 100));
       toast.success("Login successful", {
-        description: "Redirecting to dashboard..."
+        description: "Redirecting to dashboard...",
       });
       setTimeout(() => {
         router.replace("/");
@@ -54,9 +54,14 @@ export default function LoginContent() {
       }, 600);
     } catch (error) {
       console.error("Login error:", error);
-      auditLogger.login(email, false, error instanceof Error ? error.message : 'Invalid credentials');
+      auditLogger.login(
+        email,
+        false,
+        error instanceof Error ? error.message : "Invalid credentials"
+      );
       toast.error("Login failed", {
-        description: error instanceof Error ? error.message : "Invalid credentials"
+        description:
+          error instanceof Error ? error.message : "Invalid credentials",
       });
     } finally {
       setIsLoading(false);
@@ -73,8 +78,8 @@ export default function LoginContent() {
               alt="JSC Logo"
               width={160}
               height={160}
-              priority
               className="drop-shadow-lg transition-transform duration-300 hover:scale-105"
+              unoptimized
             />
           </div>
 
@@ -87,10 +92,13 @@ export default function LoginContent() {
                   width={240}
                   height={80}
                   className="h-16 w-auto transition-transform duration-300 hover:scale-105"
+                  unoptimized
                 />
               </div>
               <div className="space-y-1">
-                <CardTitle className="text-2xl font-bold text-center transition-colors duration-300 hover:text-[#1B4D3E]">Welcome Back</CardTitle>
+                <CardTitle className="text-2xl font-bold text-center transition-colors duration-300 hover:text-[#1B4D3E]">
+                  Welcome Back
+                </CardTitle>
                 <CardDescription className="text-center transition-colors duration-200">
                   Sign in to access the Court Recording Management System
                 </CardDescription>
@@ -99,7 +107,11 @@ export default function LoginContent() {
             <form onSubmit={handleSubmit} autoComplete="off">
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="transition-colors duration-200 hover:text-[#1B4D3E]">Email</Label>
+                  <Label
+                    htmlFor="email"
+                    className="transition-colors duration-200 hover:text-[#1B4D3E]">
+                    Email
+                  </Label>
                   <Input
                     id="email"
                     name="email"
@@ -117,7 +129,11 @@ export default function LoginContent() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="transition-colors duration-200 hover:text-[#1B4D3E]">Password</Label>
+                  <Label
+                    htmlFor="password"
+                    className="transition-colors duration-200 hover:text-[#1B4D3E]">
+                    Password
+                  </Label>
                   <Input
                     id="password"
                     name="password"
@@ -138,15 +154,16 @@ export default function LoginContent() {
                 <Button
                   type="submit"
                   className="w-full bg-[#1B4D3E] hover:bg-[#2A735D] transition-all duration-200 hover:scale-105 hover:shadow-lg group"
-                  disabled={isLoading}
-                >
+                  disabled={isLoading}>
                   {isLoading ? (
                     <>
                       <Loader className="mr-2 h-4 w-4 animate-spin" />
                       <span className="animate-pulse">Signing in...</span>
                     </>
                   ) : (
-                    <span className="transition-all duration-200 group-hover:font-medium">Sign In</span>
+                    <span className="transition-all duration-200 group-hover:font-medium">
+                      Sign In
+                    </span>
                   )}
                 </Button>
                 <Button
@@ -154,8 +171,7 @@ export default function LoginContent() {
                   variant="link"
                   className="text-sm text-muted-foreground transition-all duration-200 hover:text-[#1B4D3E] hover:scale-105"
                   onClick={() => router.push("/forgot-password")}
-                  disabled={isLoading}
-                >
+                  disabled={isLoading}>
                   Forgot your password?
                 </Button>
               </CardFooter>
@@ -175,5 +191,3 @@ export default function LoginContent() {
     </div>
   );
 }
-
-

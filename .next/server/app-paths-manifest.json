@@ -1,8 +1,8 @@
 {
-  "/api/backend/[...path]/route": "app/api/backend/[...path]/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/api/audit/[...path]/route": "app/api/audit/[...path]/route.js",
-  "/recordings/[id]/page": "app/recordings/[id]/page.js",
-  "/reports/page": "app/reports/page.js",
+  "/api/backend/[...path]/route": "app/api/backend/[...path]/route.js",
+  "/login/page": "app/login/page.js",
   "/page": "app/page.js",
   "/transcripts/page": "app/transcripts/page.js",
   "/recordings/page": "app/recordings/page.js"
