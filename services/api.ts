@@ -1,6 +1,6 @@
 import { cacheService, CACHE_KEYS } from "./cacheService";
 
-const API_BASE_URL = "/api/backend";
+const API_BASE_URL = "/api";
 
 // Configuration for API requests
 const API_CONFIG = {
@@ -158,6 +158,9 @@ export interface Court {
   court_name: string;
   address?: string;
   contact_info?: string;
+  province?: string;
+  district?: string;
+  region?: string; // auto from province; for Mashonaland East choose one
   created_at?: string;
 }
 
@@ -187,6 +190,10 @@ export interface User {
     | "recording_supervisor";
   court: string; // Court associated with the user
   contact_info: string; // Contact information
+  // Optional location fields (role-based requirements in UI)
+  province?: string;
+  district?: string;
+  region?: string;
   date_created?: string; // Optional, can be set to the current date
 }
 
@@ -208,6 +215,102 @@ export interface SubscriptionData {
 }
 
 export const recordingsApi = {
+  uploadFile: async (
+    file: File,
+    targetFilename: string
+  ): Promise<{ filename: string }> => {
+    const DIRECT_BASE = `http://142.93.56.4:5000`;
+    const form = new FormData();
+    form.append("file", file, targetFilename);
+
+    console.log("[API] POST (direct) /upload starting", {
+      name: file.name,
+      sendAs: targetFilename,
+      size: file.size,
+      type: file.type,
+    });
+    const startedAt = Date.now();
+    const response = await fetch(`${DIRECT_BASE}/upload`, {
+      method: "POST",
+      body: form,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.error(
+        "[API] /upload failed",
+        response.status,
+        response.statusText,
+        text
+      );
+      throw new Error(
+        `Upload failed: ${response.status} ${response.statusText} ${text}`
+      );
+    }
+    const elapsedMs = Date.now() - startedAt;
+    console.log("[API] (direct) /upload response", {
+      status: response.status,
+      statusText: response.statusText,
+      elapsedMs,
+      contentType: response.headers.get("content-type"),
+      contentLength: response.headers.get("content-length"),
+    });
+    const json = await response.json().catch(async () => {
+      const t = await response.text().catch(() => "");
+      console.warn("[API] (direct) /upload non-JSON body", t?.slice(0, 200));
+      return { filename: "" } as any;
+    });
+    console.log("[API] (direct) /upload success", json);
+    // Expecting { message, filename }
+    return { filename: json.filename };
+  },
+
+  uploadRecording: async (meta: Record<string, string>): Promise<void> => {
+    // Direct form-encoded call (server reads request.form)
+    const DIRECT_BASE = `http://142.93.56.4:5000`;
+    const body = new URLSearchParams();
+    Object.entries(meta).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) body.append(k, String(v));
+    });
+
+    console.log(
+      "[API] POST (direct) /upload_recording starting",
+      Object.fromEntries(body)
+    );
+    const startedAtMeta = Date.now();
+    const response = await fetch(`${DIRECT_BASE}/upload_recording`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.error(
+        "[API] /upload_recording failed",
+        response.status,
+        response.statusText,
+        text
+      );
+      throw new Error(
+        `Failed to save recording: ${response.status} ${response.statusText} ${text}`
+      );
+    }
+    const elapsedMsMeta = Date.now() - startedAtMeta;
+    console.log("[API] (direct) /upload_recording response", {
+      status: response.status,
+      statusText: response.statusText,
+      elapsedMs: elapsedMsMeta,
+      contentType: response.headers.get("content-type"),
+      contentLength: response.headers.get("content-length"),
+    });
+    const metaJson = await response
+      .json()
+      .catch(async () => ({ text: await response.text().catch(() => "") }));
+    console.log("[API] (direct) /upload_recording success", metaJson);
+  },
   getAllRecordings: async (forceRefresh = false): Promise<Recording[]> => {
     // Check cache first unless force refresh is requested
     if (!forceRefresh) {
@@ -298,6 +401,43 @@ export const recordingsApi = {
     cacheService.delete(CACHE_KEYS.RECORDING(id));
     cacheService.delete(CACHE_KEYS.RECORDINGS);
     console.log(`🗑️ Cache invalidated for recording ${id} and recordings list`);
+  },
+
+  // Paginated recordings with full fields and filters
+  getRecordingsPaginated: async (params: {
+    limit?: number;
+    offset?: number;
+    q?: string;
+    court?: string;
+    courtroom?: string;
+    status?: string;
+    start_date?: string;
+    end_date?: string;
+    region?: string;
+    district?: string;
+    province?: string;
+    sort_by?: "date_stamp" | "case_number" | "title";
+    sort_dir?: "asc" | "desc";
+  }): Promise<{
+    items: Recording[];
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  }> => {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "")
+        search.append(k, String(v));
+    });
+    const url = `${API_BASE_URL}/recordings_paginated?${search.toString()}`;
+    const response = await retryFetch(url, { headers: getAuthHeaders() });
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch paginated recordings: ${response.status} ${response.statusText}`
+      );
+    }
+    return await response.json();
   },
 
   getCourts: async (): Promise<Court[]> => {
@@ -484,6 +624,110 @@ export const recordingsApi = {
     }
   },
 
+  // Recordings by geography helpers
+  getRecordingsByRegion: async (region: string): Promise<Recording[]> => {
+    const cacheKey = CACHE_KEYS.RECORDINGS_BY_REGION(region);
+    const cached = cacheService.get<Recording[]>(cacheKey);
+    if (cached) {
+      console.log(`📦 Serving recordings by region '${region}' from cache`);
+      return cached;
+    }
+    const response = await retryFetch(
+      `${API_BASE_URL}/recordings/by_region/${encodeURIComponent(region)}`
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch recordings by region: ${response.status}`
+      );
+    }
+    const data = await response.json();
+    cacheService.set(cacheKey, data, 5 * 60 * 1000);
+    return data;
+  },
+
+  getRecordingsByDistrict: async (district: string): Promise<Recording[]> => {
+    const cacheKey = CACHE_KEYS.RECORDINGS_BY_DISTRICT(district);
+    const cached = cacheService.get<Recording[]>(cacheKey);
+    if (cached) {
+      console.log(`📦 Serving recordings by district '${district}' from cache`);
+      return cached;
+    }
+    const response = await retryFetch(
+      `${API_BASE_URL}/recordings/by_district/${encodeURIComponent(district)}`
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch recordings by district: ${response.status}`
+      );
+    }
+    const data = await response.json();
+    cacheService.set(cacheKey, data, 5 * 60 * 1000);
+    return data;
+  },
+
+  getRecordingsByCourt: async (courtName: string): Promise<Recording[]> => {
+    const response = await retryFetch(
+      `${API_BASE_URL}/recordings/by_court/${encodeURIComponent(courtName)}`
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch recordings by court: ${response.status}`
+      );
+    }
+    return await response.json();
+  },
+
+  // Province helper: try direct endpoint first; fallback to courts aggregation
+  getRecordingsByProvince: async (province: string): Promise<Recording[]> => {
+    const cacheKey = CACHE_KEYS.RECORDINGS_BY_PROVINCE(province);
+    const cached = cacheService.get<Recording[]>(cacheKey);
+    if (cached) {
+      console.log(`📦 Serving recordings by province '${province}' from cache`);
+      return cached;
+    }
+    // Try direct backend endpoint if available
+    try {
+      const direct = await retryFetch(
+        `${API_BASE_URL}/recordings/by_province/${encodeURIComponent(province)}`
+      );
+      if (direct.ok) {
+        const data = await direct.json();
+        cacheService.set(cacheKey, data, 5 * 60 * 1000);
+        return data;
+      }
+    } catch (e) {
+      // fall through to aggregation
+    }
+
+    // Fallback: fetch courts and filter by province, then aggregate by court
+    const courtsResponse = await retryFetch(`${API_BASE_URL}/courts`);
+    if (!courtsResponse.ok) {
+      throw new Error(`Failed to fetch courts: ${courtsResponse.status}`);
+    }
+    const courts: Court[] = await courtsResponse.json();
+    const provinceCourts = (courts || []).filter(
+      (c: any) => (c.province || "").toLowerCase() === province.toLowerCase()
+    );
+
+    const all: Recording[] = [];
+    for (const court of provinceCourts) {
+      try {
+        const byCourt = await recordingsApi.getRecordingsByCourt(
+          (court as any).court_name || court.court_name
+        );
+        all.push(...byCourt);
+      } catch (e) {
+        console.warn(
+          "Failed fetching recordings for court",
+          court.court_name,
+          e
+        );
+      }
+    }
+    cacheService.set(cacheKey, all, 5 * 60 * 1000);
+    return all;
+  },
+
   addRecording: async (data: FormData): Promise<void> => {
     const token = getToken();
     const headers: Record<string, string> = {};
@@ -543,6 +787,63 @@ export const recordingsApi = {
     return data;
   },
 
+  // Login for web frontend using /login_web
+  loginWebUser: async (
+    email: string,
+    password: string
+  ): Promise<LoginResponse> => {
+    const response = await fetch(`${API_BASE_URL}/login_web`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to login");
+    }
+
+    // Set auth token cookie (mirror loginUser behavior)
+    try {
+      const isHttps =
+        typeof window !== "undefined" && window.location.protocol === "https:";
+      const cookieParts = [
+        `token=${data.token}`,
+        "path=/",
+        "samesite=lax",
+        "max-age=604800",
+      ];
+      if (isHttps) {
+        cookieParts.push("secure");
+      }
+      document.cookie = cookieParts.join("; ");
+    } catch (e) {
+      console.warn("Failed to set auth cookie:", e);
+    }
+
+    return data;
+  },
+
+  // Fetch current user using /me
+  getCurrentUser: async (): Promise<CurrentUser> => {
+    const response = await fetch(`${API_BASE_URL}/me`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(
+        data.message || `Failed to get current user: ${response.status}`
+      );
+    }
+    const data = await response.json();
+    return data as CurrentUser;
+  },
+
   logoutUser: async (): Promise<void> => {
     try {
       const token = getToken();
@@ -586,18 +887,20 @@ export const recordingsApi = {
   },
 
   getCurrentUser: async (): Promise<CurrentUser> => {
-    console.log(
-      "🔍 API: getCurrentUser called - this should not be used anymore"
-    );
-    console.log(
-      "🔍 API: Using temporary authentication instead of /me endpoint"
-    );
-
-    // This function is kept for compatibility but should not be used
-    // The actual user fetching is now handled by getTempCurrentUser() in utils/tempAuth.ts
-    throw new Error(
-      "getCurrentUser API endpoint is not available. Use temporary authentication instead."
-    );
+    const response = await fetch(`${API_BASE_URL}/me`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      let message = `Failed to get current user: ${response.status}`;
+      try {
+        const data = await response.json();
+        if (data?.message) message = data.message;
+      } catch {}
+      throw new Error(message);
+    }
+    return (await response.json()) as CurrentUser;
   },
 
   generateSubscription: async (
@@ -929,6 +1232,14 @@ export const commentsApi = {
 };
 
 // Users API
+type UserType = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  date_created?: string;
+};
+
 export const usersApi = {
   // Get all users
   getUsers: async (): Promise<UserType[]> => {

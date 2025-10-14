@@ -77,6 +77,20 @@ export default function Layout({ children }: LayoutProps) {
     }
   }, [loading, user, retryCount, refreshUser]);
 
+  // If after retries we still have no identified user, force logout to clear stale token
+  React.useEffect(() => {
+    const token = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("token="))
+      ?.split("=")[1];
+    if (!loading && !user && token && retryCount >= 3) {
+      console.log(
+        "🔁 Max retries reached with token present but no user. Logging out..."
+      );
+      handleLogout();
+    }
+  }, [loading, user, retryCount]);
+
   // Define menu items based on user role
   const menuItems = useMemo(() => {
     const baseItems = [
@@ -84,7 +98,7 @@ export default function Layout({ children }: LayoutProps) {
       { name: "Recordings", icon: FileText, href: "/recordings" },
     ];
 
-    // Only show Reports and Settings to admin and super_admin users
+    // Show Reports/Transcripts to admin and magistrate roles; Settings only to admin/super_admin
     if (process.env.NODE_ENV === "development") {
       console.log(
         "🎯 Checking if should show admin menus. isAdmin:",
@@ -93,6 +107,14 @@ export default function Layout({ children }: LayoutProps) {
         user?.role
       );
     }
+    const magistrateRoles = new Set([
+      "station_magistrate",
+      "resident_magistrate",
+      "provincial_magistrate",
+      "regional_magistrate",
+      "senior_regional_magistrate",
+    ]);
+
     if (isAdmin) {
       if (process.env.NODE_ENV === "development") {
         console.log("✅ Adding admin menus");
@@ -104,8 +126,18 @@ export default function Layout({ children }: LayoutProps) {
         href: "/transcripts",
       });
       baseItems.push({ name: "Settings", icon: Settings, href: "/settings" });
+    } else if (
+      user?.role &&
+      (magistrateRoles.has(user.role) || user.role === "judge")
+    ) {
+      baseItems.push({ name: "Reports", icon: BarChart3, href: "/reports" });
+      baseItems.push({
+        name: "Transcripts",
+        icon: FileText,
+        href: "/transcripts",
+      });
     } else if (process.env.NODE_ENV === "development") {
-      console.log("❌ Not adding admin menus");
+      console.log("❌ Not adding admin/magistrate menus");
     }
 
     return baseItems;
@@ -293,6 +325,13 @@ export default function Layout({ children }: LayoutProps) {
                       }}
                       className="text-xs">
                       Refresh
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLogout}
+                      className="text-xs">
+                      Logout
                     </Button>
                   </div>
                 )}

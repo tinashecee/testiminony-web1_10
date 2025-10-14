@@ -4,6 +4,8 @@ import { useEffect } from "react";
 
 export default function ConsoleSilencer() {
   useEffect(() => {
+    // Only silence logs in production; keep them in development for debugging
+    if (process.env.NODE_ENV !== "production") return;
     try {
       const noop = () => {};
       const c = window.console;
@@ -21,11 +23,3 @@ export default function ConsoleSilencer() {
 
   return null;
 }
-
-
-
-
-
-
-
-

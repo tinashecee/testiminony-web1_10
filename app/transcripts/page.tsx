@@ -98,7 +98,17 @@ export default function TranscriptsPage() {
 
   return (
     <Layout>
-      <RoleGuard allowedRoles={["admin", "super_admin"]}>
+      <RoleGuard
+        allowedRoles={[
+          "super_admin",
+          "admin",
+          "judge",
+          "senior_regional_magistrate",
+          "provincial_magistrate",
+          "regional_magistrate",
+          "station_magistrate",
+          "resident_magistrate",
+        ]}>
         <div className="container mx-auto p-6">
           <div className="mb-8">
             <h1 className="text-3xl font-bold mb-2">Transcript Reports</h1>

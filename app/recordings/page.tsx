@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Search, ChevronRight, Building2, MapPin } from "lucide-react";
+import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Building2,
+  MapPin,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -14,26 +20,41 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { RecordingList } from "@/components/RecordingList";
 import Layout from "@/components/Layout";
-import { recordingsApi, type Recording, type Court, type Courtroom } from "@/services/api";
+import {
+  recordingsApi,
+  type Recording,
+  type Court,
+  type Courtroom,
+} from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
+import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger 
+  CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 
 export default function RecordingsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCourt, setSelectedCourt] = useState<string | null>(null);
-  const [selectedCourtroom, setSelectedCourtroom] = useState<string | null>(null);
+  const [selectedCourtroom, setSelectedCourtroom] = useState<string | null>(
+    null
+  );
   const [pageSize, setPageSize] = useState(10);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -78,76 +99,145 @@ export default function RecordingsPage() {
     const fetchRecordings = async () => {
       try {
         setIsLoading(true);
-        const data = await recordingsApi.getAllRecordings();
-        setRecordings(data);
+        const role = user?.role;
+        const params: any = {
+          limit: pageSize,
+          offset,
+          q: searchQuery || undefined,
+          court: selectedCourt || undefined,
+          courtroom: selectedCourtroom || undefined,
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          start_date: dateRange.from
+            ? format(dateRange.from, "yyyy-MM-dd")
+            : undefined,
+          end_date: dateRange.to
+            ? format(dateRange.to, "yyyy-MM-dd")
+            : undefined,
+          sort_by: "date_stamp",
+          sort_dir: "desc",
+        };
+
+        if (
+          ["station_magistrate", "resident_magistrate"].includes(role || "") &&
+          (user as any)?.district
+        ) {
+          params.district = (user as any).district as string;
+        } else if (
+          role === "provincial_magistrate" &&
+          (user as any)?.province
+        ) {
+          params.province = (user as any).province as string;
+        } else if (role === "regional_magistrate" && (user as any)?.region) {
+          params.region = (user as any).region as string;
+        }
+
+        const res = await recordingsApi.getRecordingsPaginated(params);
+        setRecordings(res.items);
+        setTotal(res.total);
       } catch (error) {
         console.error("Error fetching recordings:", error);
-        /*  toast({
-          title: "Error",
-          description: "Failed to fetch recordings. Please try again later.",
-          variant: "destructive",
-        });*/
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchRecordings();
-  }, [toast]);
+  }, [
+    toast,
+    user?.role,
+    (user as any)?.district,
+    (user as any)?.province,
+    (user as any)?.region,
+    pageSize,
+    offset,
+    searchQuery,
+    selectedCourt,
+    selectedCourtroom,
+    statusFilter,
+    dateRange,
+  ]);
+
+  // Reset to first page when filters/pageSize change
+  useEffect(() => {
+    setOffset(0);
+  }, [
+    pageSize,
+    searchQuery,
+    selectedCourt,
+    selectedCourtroom,
+    statusFilter,
+    dateRange,
+  ]);
 
   // Filter recordings based on search, court, and status
   const filteredRecordings = useMemo(() => {
-    return recordings
-      .filter((recording) => {
-        const recordingDate = new Date(recording.date_stamp);
-        
-        const matchesSearch =
-          recording.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          recording.case_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          recording.judge_name.toLowerCase().includes(searchQuery.toLowerCase());
+    return (
+      recordings
+        .filter((recording) => {
+          const recordingDate = new Date(recording.date_stamp);
 
-        const matchesCourt =
-          !selectedCourt || recording.court === selectedCourt;
-        const matchesCourtroom =
-          !selectedCourtroom || recording.courtroom === selectedCourtroom;
-        const matchesStatus =
-          statusFilter === "all" || recording.status === statusFilter;
-        
-        const matchesDateRange =
-          (!dateRange.from || recordingDate >= dateRange.from) &&
-          (!dateRange.to || recordingDate <= dateRange.to);
+          const matchesSearch =
+            recording.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            recording.case_number
+              .toLowerCase()
+              .includes(searchQuery.toLowerCase()) ||
+            recording.judge_name
+              .toLowerCase()
+              .includes(searchQuery.toLowerCase());
 
-        return (
-          matchesSearch &&
-          matchesCourt &&
-          matchesCourtroom &&
-          matchesStatus &&
-          matchesDateRange
-        );
-      })
-      // Sort by date_stamp in descending order (most recent first)
-      .sort((a, b) => {
-        return new Date(b.date_stamp).getTime() - new Date(a.date_stamp).getTime();
-      });
-  }, [recordings, searchQuery, selectedCourt, selectedCourtroom, statusFilter, dateRange]);
+          const matchesCourt =
+            !selectedCourt || recording.court === selectedCourt;
+          const matchesCourtroom =
+            !selectedCourtroom || recording.courtroom === selectedCourtroom;
+          const matchesStatus =
+            statusFilter === "all" || recording.status === statusFilter;
 
-  const alphabetList = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+          const matchesDateRange =
+            (!dateRange.from || recordingDate >= dateRange.from) &&
+            (!dateRange.to || recordingDate <= dateRange.to);
+
+          return (
+            matchesSearch &&
+            matchesCourt &&
+            matchesCourtroom &&
+            matchesStatus &&
+            matchesDateRange
+          );
+        })
+        // Sort by date_stamp in descending order (most recent first)
+        .sort((a, b) => {
+          return (
+            new Date(b.date_stamp).getTime() - new Date(a.date_stamp).getTime()
+          );
+        })
+    );
+  }, [
+    recordings,
+    searchQuery,
+    selectedCourt,
+    selectedCourtroom,
+    statusFilter,
+    dateRange,
+  ]);
+
+  const alphabetList = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
   const toggleCourtExpansion = (courtId: string) => {
-    setExpandedCourts(prev => 
-      prev.includes(courtId) 
-        ? prev.filter(id => id !== courtId)
+    setExpandedCourts((prev) =>
+      prev.includes(courtId)
+        ? prev.filter((id) => id !== courtId)
         : [...prev, courtId]
     );
   };
 
   const filteredAndSortedCourts = useMemo(() => {
     return courts
-      .filter(court => {
+      .filter((court) => {
         const matchesSearch = court.court_name
           .toLowerCase()
           .includes(courtSearchQuery.toLowerCase());
-        const matchesAlphabet = !alphabetFilter || 
+        const matchesAlphabet =
+          !alphabetFilter ||
           court.court_name.charAt(0).toUpperCase() === alphabetFilter;
         return matchesSearch && matchesAlphabet;
       })
@@ -156,7 +246,10 @@ export default function RecordingsPage() {
 
   const paginatedCourts = useMemo(() => {
     const startIndex = (courtsPage - 1) * courtsPerPage;
-    return filteredAndSortedCourts.slice(startIndex, startIndex + courtsPerPage);
+    return filteredAndSortedCourts.slice(
+      startIndex,
+      startIndex + courtsPerPage
+    );
   }, [filteredAndSortedCourts, courtsPage, courtsPerPage]);
 
   const totalPages = Math.ceil(filteredAndSortedCourts.length / courtsPerPage);
@@ -164,9 +257,13 @@ export default function RecordingsPage() {
   // Compute recording counts for courts and courtrooms
   const courtRecordingCounts = useMemo(() => {
     const counts: Record<string, { total: number; filtered: number }> = {};
-    courts.forEach(court => {
-      const total = recordings.filter(rec => rec.court === court.court_name).length;
-      const filtered = filteredRecordings.filter(rec => rec.court === court.court_name).length;
+    courts.forEach((court) => {
+      const total = recordings.filter(
+        (rec) => rec.court === court.court_name
+      ).length;
+      const filtered = filteredRecordings.filter(
+        (rec) => rec.court === court.court_name
+      ).length;
       counts[court.court_name] = { total, filtered };
     });
     return counts;
@@ -174,16 +271,21 @@ export default function RecordingsPage() {
 
   const courtroomRecordingCounts = useMemo(() => {
     const counts: Record<string, { total: number; filtered: number }> = {};
-    courtrooms.forEach(room => {
-      const total = recordings.filter(rec => rec.courtroom === room.courtroom_name).length;
-      const filtered = filteredRecordings.filter(rec => rec.courtroom === room.courtroom_name).length;
+    courtrooms.forEach((room) => {
+      const total = recordings.filter(
+        (rec) => rec.courtroom === room.courtroom_name
+      ).length;
+      const filtered = filteredRecordings.filter(
+        (rec) => rec.courtroom === room.courtroom_name
+      ).length;
       counts[room.courtroom_name] = { total, filtered };
     });
     return counts;
   }, [courtrooms, recordings, filteredRecordings]);
 
   // Check if any filters are active
-  const hasActiveFilters = searchQuery || statusFilter !== "all" || dateRange.from || dateRange.to;
+  const hasActiveFilters =
+    searchQuery || statusFilter !== "all" || dateRange.from || dateRange.to;
 
   return (
     <Layout>
@@ -211,8 +313,11 @@ export default function RecordingsPage() {
                     variant={alphabetFilter === letter ? "default" : "ghost"}
                     size="sm"
                     className="w-8 h-8 p-0"
-                    onClick={() => setAlphabetFilter(alphabetFilter === letter ? null : letter)}
-                  >
+                    onClick={() =>
+                      setAlphabetFilter(
+                        alphabetFilter === letter ? null : letter
+                      )
+                    }>
                     {letter}
                   </Button>
                 ))}
@@ -227,61 +332,78 @@ export default function RecordingsPage() {
                   className={cn(
                     "w-full text-left px-2 py-1.5 text-sm rounded-md font-medium",
                     "hover:bg-gray-100 transition-colors",
-                    !selectedCourt && !selectedCourtroom && "bg-blue-50 border-l-4 border-blue-500 text-blue-700"
+                    !selectedCourt &&
+                      !selectedCourtroom &&
+                      "bg-blue-50 border-l-4 border-blue-500 text-blue-700"
                   )}
                   onClick={() => {
                     setSelectedCourt(null);
                     setSelectedCourtroom(null);
-                  }}
-                >
+                  }}>
                   📋 Show All Recordings
                   <span className="text-xs text-muted-foreground ml-2">
-                    ({hasActiveFilters ? `${filteredRecordings.length}/${recordings.length}` : recordings.length} total)
+                    (
+                    {hasActiveFilters
+                      ? `${filteredRecordings.length}/${recordings.length}`
+                      : recordings.length}{" "}
+                    total)
                   </span>
                 </button>
-                
+
                 <div className="border-t my-2"></div>
-                
+
                 {paginatedCourts.map((court) => (
                   <Collapsible
                     key={court.court_id}
                     open={expandedCourts.includes(court.court_id.toString())}
-                    onOpenChange={() => toggleCourtExpansion(court.court_id.toString())}
-                  >
+                    onOpenChange={() =>
+                      toggleCourtExpansion(court.court_id.toString())
+                    }>
                     <CollapsibleTrigger asChild>
                       <button
                         className={cn(
                           "w-full flex items-center justify-between px-2 py-1.5 text-sm rounded-md",
                           "hover:bg-gray-100 transition-colors",
-                          selectedCourt === court.court_name && "bg-blue-50 border-l-4 border-blue-500"
+                          selectedCourt === court.court_name &&
+                            "bg-blue-50 border-l-4 border-blue-500"
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedCourt(court.court_name);
                           setSelectedCourtroom(null); // Clear courtroom selection when selecting court
-                        }}
-                      >
+                        }}>
                         <span className="flex items-center gap-2">
                           <ChevronRight
                             className={cn(
                               "h-4 w-4 transition-transform",
-                              expandedCourts.includes(court.court_id.toString()) && "rotate-90"
+                              expandedCourts.includes(
+                                court.court_id.toString()
+                              ) && "rotate-90"
                             )}
                           />
                           <Building2 className="h-4 w-4 text-muted-foreground" />
                           {court.court_name}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {hasActiveFilters && courtRecordingCounts[court.court_name]?.filtered !== courtRecordingCounts[court.court_name]?.total
-                            ? `${courtRecordingCounts[court.court_name]?.filtered || 0}/${courtRecordingCounts[court.court_name]?.total || 0}`
-                            : courtRecordingCounts[court.court_name]?.total || 0
-                          } recordings
+                          {hasActiveFilters &&
+                          courtRecordingCounts[court.court_name]?.filtered !==
+                            courtRecordingCounts[court.court_name]?.total
+                            ? `${
+                                courtRecordingCounts[court.court_name]
+                                  ?.filtered || 0
+                              }/${
+                                courtRecordingCounts[court.court_name]?.total ||
+                                0
+                              }`
+                            : courtRecordingCounts[court.court_name]?.total ||
+                              0}{" "}
+                          recordings
                         </span>
                       </button>
                     </CollapsibleTrigger>
-                    
+
                     <CollapsibleContent className="ml-6 space-y-1">
-                                              {courtrooms
+                      {courtrooms
                         .filter((room) => room.court_id === court.court_id)
                         .map((room) => (
                           <button
@@ -295,17 +417,29 @@ export default function RecordingsPage() {
                               "hover:bg-gray-100 transition-colors",
                               selectedCourtroom === room.courtroom_name &&
                                 "bg-blue-50 border-l-4 border-blue-500 text-blue-700"
-                            )}
-                          >
+                            )}>
                             <span className="flex items-center gap-2">
                               <MapPin className="h-3 w-3 text-muted-foreground" />
                               {room.courtroom_name}
                             </span>
                             <span className="text-xs text-muted-foreground ml-2">
-                              {hasActiveFilters && courtroomRecordingCounts[room.courtroom_name]?.filtered !== courtroomRecordingCounts[room.courtroom_name]?.total
-                                ? `${courtroomRecordingCounts[room.courtroom_name]?.filtered || 0}/${courtroomRecordingCounts[room.courtroom_name]?.total || 0}`
-                                : courtroomRecordingCounts[room.courtroom_name]?.total || 0
-                              } recordings
+                              {hasActiveFilters &&
+                              courtroomRecordingCounts[room.courtroom_name]
+                                ?.filtered !==
+                                courtroomRecordingCounts[room.courtroom_name]
+                                  ?.total
+                                ? `${
+                                    courtroomRecordingCounts[
+                                      room.courtroom_name
+                                    ]?.filtered || 0
+                                  }/${
+                                    courtroomRecordingCounts[
+                                      room.courtroom_name
+                                    ]?.total || 0
+                                  }`
+                                : courtroomRecordingCounts[room.courtroom_name]
+                                    ?.total || 0}{" "}
+                              recordings
                             </span>
                           </button>
                         ))}
@@ -314,9 +448,8 @@ export default function RecordingsPage() {
                 ))}
               </div>
             </ScrollArea>
-
           </div>
-          
+
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="p-4 border-t bg-white">
@@ -324,9 +457,8 @@ export default function RecordingsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCourtsPage(p => Math.max(1, p - 1))}
-                  disabled={courtsPage === 1}
-                >
+                  onClick={() => setCourtsPage((p) => Math.max(1, p - 1))}
+                  disabled={courtsPage === 1}>
                   Previous
                 </Button>
                 <span className="text-sm text-muted-foreground">
@@ -335,9 +467,10 @@ export default function RecordingsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCourtsPage(p => Math.min(totalPages, p + 1))}
-                  disabled={courtsPage === totalPages}
-                >
+                  onClick={() =>
+                    setCourtsPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={courtsPage === totalPages}>
                   Next
                 </Button>
               </div>
@@ -357,12 +490,16 @@ export default function RecordingsPage() {
                   : "All Recordings"}
               </h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Showing {filteredRecordings.length} of {recordings.length} recordings
+                Showing {offset + 1} to {Math.min(offset + pageSize, total)} of{" "}
+                {total} recordings
                 {selectedCourt && !selectedCourtroom && (
                   <span> in {selectedCourt}</span>
                 )}
                 {selectedCourtroom && (
-                  <span> in {selectedCourt} / {selectedCourtroom}</span>
+                  <span>
+                    {" "}
+                    in {selectedCourt} / {selectedCourtroom}
+                  </span>
                 )}
               </p>
             </div>
@@ -374,14 +511,16 @@ export default function RecordingsPage() {
                   onClick={() => {
                     setSelectedCourt(null);
                     setSelectedCourtroom(null);
-                  }}
-                >
+                  }}>
                   Clear Court Filter
                 </Button>
               )}
               <Select
                 value={pageSize.toString()}
-                onValueChange={(value) => setPageSize(Number(value))}>
+                onValueChange={(value) => {
+                  setPageSize(Number(value));
+                  setOffset(0);
+                }}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Items per page" />
                 </SelectTrigger>
@@ -392,6 +531,28 @@ export default function RecordingsPage() {
                   <SelectItem value="100">100 per page</SelectItem>
                 </SelectContent>
               </Select>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setOffset((prev) => Math.max(0, prev - pageSize))
+                  }
+                  disabled={offset === 0}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setOffset((prev) =>
+                      prev + pageSize < total ? prev + pageSize : prev
+                    )
+                  }
+                  disabled={offset + pageSize >= total}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -415,9 +576,10 @@ export default function RecordingsPage() {
                       variant="outline"
                       className={cn(
                         "justify-start text-left font-normal w-[260px]",
-                        !dateRange.from && !dateRange.to && "text-muted-foreground"
-                      )}
-                    >
+                        !dateRange.from &&
+                          !dateRange.to &&
+                          "text-muted-foreground"
+                      )}>
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {dateRange.from ? (
                         dateRange.to ? (
@@ -465,15 +627,17 @@ export default function RecordingsPage() {
                   </SelectContent>
                 </Select>
 
-                {(dateRange.from || dateRange.to || statusFilter !== "all" || searchQuery) && (
+                {(dateRange.from ||
+                  dateRange.to ||
+                  statusFilter !== "all" ||
+                  searchQuery) && (
                   <Button
                     variant="ghost"
                     onClick={() => {
                       setDateRange({ from: undefined, to: undefined });
                       setStatusFilter("all");
                       setSearchQuery("");
-                    }}
-                  >
+                    }}>
                     Clear Filters
                   </Button>
                 )}

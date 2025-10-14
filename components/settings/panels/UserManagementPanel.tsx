@@ -38,7 +38,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Search, Plus, ChevronLeft, ChevronRight, Check, ChevronsUpDown } from "lucide-react";
+import {
+  Search,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  ChevronsUpDown,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Loader } from "@/components/ui/loader";
@@ -51,6 +58,13 @@ import {
   ToastDescription,
 } from "@/components/ui/toast";
 import { recordingsApi, User, Court } from "@/services/api";
+import {
+  getProvinces,
+  getDistricts,
+  getRegion,
+  needsRegionChoice,
+  getRegionOptions,
+} from "@/utils/zwLocations";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -71,6 +85,9 @@ export function UserManagementPanel() {
     role: "court_recorder" as User["role"],
     court: "",
     contact_info: "",
+    province: "",
+    district: "",
+    region: "",
   });
   const { showToast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -90,10 +107,16 @@ export function UserManagementPanel() {
       { value: "resident_magistrate", label: "Resident Magistrate" },
       { value: "provincial_magistrate", label: "Provincial Magistrate" },
       { value: "regional_magistrate", label: "Regional Magistrate" },
-      { value: "senior_regional_magistrate", label: "Senior Regional Magistrate" },
+      {
+        value: "senior_regional_magistrate",
+        label: "Senior Regional Magistrate",
+      },
       { value: "clerk_of_court", label: "Clerk of Court" },
       { value: "transcriber", label: "Transcriber" },
-      { value: "recording_supervisor", label: "Recording and Transcription Supervisor" },
+      {
+        value: "recording_supervisor",
+        label: "Recording and Transcription Supervisor",
+      },
     ];
 
     // Only super admins can create other super admins
@@ -164,11 +187,14 @@ export function UserManagementPanel() {
       setIsLoading(true);
       await recordingsApi.addUser({
         ...newUser,
+        province: newUser.province || undefined,
+        district: newUser.district || undefined,
+        region: newUser.region || undefined,
       });
 
       // Log user creation event
       auditLogger.createUser(
-        user?.email || 'unknown@court.gov.zw',
+        user?.email || "unknown@court.gov.zw",
         newUser.email
       );
 
@@ -180,6 +206,9 @@ export function UserManagementPanel() {
         role: "court_recorder",
         court: "",
         contact_info: "",
+        province: "",
+        district: "",
+        region: "",
       });
 
       const fetchedUsers = await recordingsApi.getUsers();
@@ -198,6 +227,37 @@ export function UserManagementPanel() {
     setIsAddUserOpen(true); // Reuse the same dialog for adding and editing
   };
 
+  // Preserve and preselect existing select values when editing
+  useEffect(() => {
+    if (!selectedUser) return;
+
+    const province = selectedUser.province || "";
+    const district = selectedUser.district || "";
+    let region = selectedUser.region || "";
+
+    // Only auto-fill region from province if none is saved and province doesn't require choice
+    if (
+      selectedUser.role !== "regional_magistrate" &&
+      province &&
+      !needsRegionChoice(province) &&
+      !region
+    ) {
+      region = getRegion(province) || "";
+    }
+
+    setNewUser((prev) => ({
+      ...prev,
+      name: selectedUser.name || "",
+      email: selectedUser.email || "",
+      role: (selectedUser.role as User["role"]) || prev.role,
+      court: selectedUser.court || "",
+      contact_info: selectedUser.contact_info || "",
+      province,
+      district,
+      region,
+    }));
+  }, [selectedUser]);
+
   const handleUpdateUser = async () => {
     if (!selectedUser) return;
 
@@ -210,21 +270,36 @@ export function UserManagementPanel() {
         role: newUser.role,
         court: newUser.court,
         contact_info: newUser.contact_info,
+        province: newUser.province || undefined,
+        district: newUser.district || undefined,
+        region: newUser.region || undefined,
       });
 
       // Log user update event
       const changes = [
-        selectedUser.name !== newUser.name ? `name: ${selectedUser.name} → ${newUser.name}` : null,
-        selectedUser.email !== newUser.email ? `email: ${selectedUser.email} → ${newUser.email}` : null,
-        selectedUser.role !== newUser.role ? `role: ${selectedUser.role} → ${newUser.role}` : null,
-        selectedUser.court !== newUser.court ? `court: ${selectedUser.court} → ${newUser.court}` : null,
-        selectedUser.contact_info !== newUser.contact_info ? `contact_info: updated` : null,
-      ].filter(Boolean).join(', ');
+        selectedUser.name !== newUser.name
+          ? `name: ${selectedUser.name} → ${newUser.name}`
+          : null,
+        selectedUser.email !== newUser.email
+          ? `email: ${selectedUser.email} → ${newUser.email}`
+          : null,
+        selectedUser.role !== newUser.role
+          ? `role: ${selectedUser.role} → ${newUser.role}`
+          : null,
+        selectedUser.court !== newUser.court
+          ? `court: ${selectedUser.court} → ${newUser.court}`
+          : null,
+        selectedUser.contact_info !== newUser.contact_info
+          ? `contact_info: updated`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
 
       auditLogger.updateUser(
-        user?.email || 'unknown@court.gov.zw',
+        user?.email || "unknown@court.gov.zw",
         selectedUser.email,
-        changes || 'No changes detected'
+        changes || "No changes detected"
       );
 
       showToast("User updated successfully", "success");
@@ -242,14 +317,14 @@ export function UserManagementPanel() {
   const handleDeleteUser = async (userId: number) => {
     try {
       // Get user details before deletion for audit logging
-      const userToDelete = users.find(user => user.id === userId);
-      
+      const userToDelete = users.find((user) => user.id === userId);
+
       await recordingsApi.deleteUser(userId);
-      
+
       // Log user deletion event
       if (userToDelete) {
         auditLogger.deleteUser(
-          user?.email || 'unknown@court.gov.zw',
+          user?.email || "unknown@court.gov.zw",
           userToDelete.email
         );
       }
@@ -356,6 +431,9 @@ export function UserManagementPanel() {
                 <TableHead>Role</TableHead>
                 <TableHead>Court</TableHead>
                 <TableHead>Contact Info</TableHead>
+                <TableHead>Province</TableHead>
+                <TableHead>District</TableHead>
+                <TableHead>Region</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -371,6 +449,9 @@ export function UserManagementPanel() {
                   </TableCell>
                   <TableCell>{user.court}</TableCell>
                   <TableCell>{user.contact_info}</TableCell>
+                  <TableCell>{user.province || ""}</TableCell>
+                  <TableCell>{user.district || ""}</TableCell>
+                  <TableCell>{user.region || ""}</TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
@@ -446,27 +527,36 @@ export function UserManagementPanel() {
         </div>
 
         {/* Add User Dialog */}
-        <Dialog open={isAddUserOpen} onOpenChange={(open) => {
-          setIsAddUserOpen(open);
-          if (!open) {
-            // Reset form and search when dialog closes
-            setNewUser({
-              name: "",
-              email: "",
-              role: "court_recorder",
-              court: "",
-              contact_info: "",
-            });
-            setSelectedUser(null);
-            setCourtSearchValue("");
-            setCourtSearchOpen(false);
-          }
-        }}>
+        <Dialog
+          open={isAddUserOpen}
+          onOpenChange={(open) => {
+            setIsAddUserOpen(open);
+            if (!open) {
+              // Reset form and search when dialog closes
+              setNewUser({
+                name: "",
+                email: "",
+                role: "court_recorder",
+                court: "",
+                contact_info: "",
+                province: "",
+                district: "",
+                region: "",
+              });
+              setSelectedUser(null);
+              setCourtSearchValue("");
+              setCourtSearchOpen(false);
+            }
+          }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>{selectedUser ? "Edit User" : "Add New User"}</DialogTitle>
+              <DialogTitle>
+                {selectedUser ? "Edit User" : "Add New User"}
+              </DialogTitle>
               <DialogDescription>
-                {selectedUser ? "Update the user details." : "Enter the details for the new user."}
+                {selectedUser
+                  ? "Update the user details."
+                  : "Enter the details for the new user."}
               </DialogDescription>
             </DialogHeader>
 
@@ -501,10 +591,19 @@ export function UserManagementPanel() {
                   onValueChange={(value: User["role"]) =>
                     setNewUser((prev) => ({ ...prev, role: value }))
                   }>
-                  <SelectTrigger>
+                  <SelectTrigger
+                    disabled={newUser.role === "super_admin" && !isSuperAdmin}>
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Include current role if it's not present in available options (legacy/locked) */}
+                    {newUser.role &&
+                      !availableRoles.some((r) => r.value === newUser.role) && (
+                        <SelectItem value={newUser.role}>
+                          {getRoleLabel(newUser.role as User["role"]) +
+                            " (legacy)"}
+                        </SelectItem>
+                      )}
                     {availableRoles.map((role) => (
                       <SelectItem key={role.value} value={role.value}>
                         {role.label}
@@ -516,47 +615,53 @@ export function UserManagementPanel() {
 
               <div className="space-y-2">
                 <Label>Court</Label>
-                <Popover open={courtSearchOpen} onOpenChange={setCourtSearchOpen}>
+                <Popover
+                  open={courtSearchOpen}
+                  onOpenChange={setCourtSearchOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       role="combobox"
                       aria-expanded={courtSearchOpen}
-                      className="w-full justify-between"
-                    >
-                      {newUser.court
-                        ? newUser.court
-                        : "Select court..."}
+                      className="w-full justify-between">
+                      {newUser.court ? newUser.court : "Select court..."}
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-full p-0" align="start">
                     <Command>
-                      <CommandInput 
-                        placeholder="Search courts..." 
+                      <CommandInput
+                        placeholder="Search courts..."
                         value={courtSearchValue}
                         onValueChange={setCourtSearchValue}
                       />
                       <CommandList>
                         <CommandEmpty>No court found.</CommandEmpty>
-                        <CommandGroup heading={`${sortedAndFilteredCourts.length} court${sortedAndFilteredCourts.length !== 1 ? 's' : ''} available`}>
+                        <CommandGroup
+                          heading={`${sortedAndFilteredCourts.length} court${
+                            sortedAndFilteredCourts.length !== 1 ? "s" : ""
+                          } available`}>
                           {sortedAndFilteredCourts.map((court) => (
                             <CommandItem
                               key={court.court_id}
                               value={court.court_name}
                               onSelect={(currentValue) => {
-                                setNewUser((prev) => ({ 
-                                  ...prev, 
-                                  court: currentValue === newUser.court ? "" : currentValue 
+                                setNewUser((prev) => ({
+                                  ...prev,
+                                  court:
+                                    currentValue === newUser.court
+                                      ? ""
+                                      : currentValue,
                                 }));
                                 setCourtSearchOpen(false);
                                 setCourtSearchValue("");
-                              }}
-                            >
+                              }}>
                               <Check
                                 className={cn(
                                   "mr-2 h-4 w-4",
-                                  newUser.court === court.court_name ? "opacity-100" : "opacity-0"
+                                  newUser.court === court.court_name
+                                    ? "opacity-100"
+                                    : "opacity-0"
                                 )}
                               />
                               {court.court_name}
@@ -582,6 +687,143 @@ export function UserManagementPanel() {
                   }
                 />
               </div>
+
+              {/* Location Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Province</Label>
+                  <select
+                    className="w-full border rounded-md p-2"
+                    value={newUser.province}
+                    onChange={(e) => {
+                      const province = e.target.value;
+                      const autoRegion = getRegion(province);
+                      const role = newUser.role;
+                      const requiresIndependentRegion =
+                        role === "regional_magistrate";
+                      const region = requiresIndependentRegion
+                        ? ""
+                        : needsRegionChoice(province)
+                        ? ""
+                        : autoRegion || "";
+                      setNewUser((prev) => ({
+                        ...prev,
+                        province,
+                        district: "",
+                        region,
+                      }));
+                    }}>
+                    <option value="">Select province</option>
+                    {newUser.province &&
+                      !getProvinces().includes(newUser.province) && (
+                        <option value={newUser.province}>
+                          {newUser.province} (legacy)
+                        </option>
+                      )}
+                    {getProvinces().map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>District</Label>
+                  <select
+                    className="w-full border rounded-md p-2"
+                    value={newUser.district}
+                    onChange={(e) =>
+                      setNewUser((prev) => ({
+                        ...prev,
+                        district: e.target.value,
+                      }))
+                    }
+                    disabled={!newUser.province}>
+                    <option value="">Select district</option>
+                    {newUser.district &&
+                      !getDistricts(newUser.province).includes(
+                        newUser.district
+                      ) && (
+                        <option value={newUser.district}>
+                          {newUser.district} (legacy)
+                        </option>
+                      )}
+                    {getDistricts(newUser.province).map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Region</Label>
+                  {newUser.role === "regional_magistrate" ? (
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={newUser.region}
+                      onChange={(e) =>
+                        setNewUser((prev) => ({
+                          ...prev,
+                          region: e.target.value,
+                        }))
+                      }>
+                      <option value="">Select region</option>
+                      {newUser.region &&
+                        ![
+                          "Northern Division",
+                          "Western Division",
+                          "Central Division",
+                          "Eastern Division",
+                        ].includes(newUser.region) && (
+                          <option value={newUser.region}>
+                            {newUser.region} (legacy)
+                          </option>
+                        )}
+                      {[
+                        "Northern Division",
+                        "Western Division",
+                        "Central Division",
+                        "Eastern Division",
+                      ].map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  ) : needsRegionChoice(newUser.province) ? (
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={newUser.region}
+                      onChange={(e) =>
+                        setNewUser((prev) => ({
+                          ...prev,
+                          region: e.target.value,
+                        }))
+                      }>
+                      <option value="">Select region</option>
+                      {newUser.region &&
+                        !getRegionOptions(newUser.province).includes(
+                          newUser.region
+                        ) && (
+                          <option value={newUser.region}>
+                            {newUser.region} (legacy)
+                          </option>
+                        )}
+                      {getRegionOptions(newUser.province).map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      placeholder="Region"
+                      value={getRegion(newUser.province) || ""}
+                      readOnly
+                    />
+                  )}
+                </div>
+              </div>
             </div>
 
             <DialogFooter>
@@ -596,6 +838,26 @@ export function UserManagementPanel() {
                   !newUser.role ||
                   !newUser.court ||
                   !newUser.contact_info ||
+                  // Role-based requiredness for location
+                  ([
+                    "admin",
+                    "court_recorder",
+                    "registrar",
+                    "clerk_of_court",
+                    "station_magistrate",
+                    "resident_magistrate",
+                    "transcriber",
+                    "recording_supervisor",
+                  ].includes(newUser.role) &&
+                    (!newUser.province ||
+                      !newUser.district ||
+                      (!newUser.region &&
+                        (needsRegionChoice(newUser.province) || true)))) ||
+                  (newUser.role === "provincial_magistrate" &&
+                    (!newUser.province ||
+                      (!newUser.region &&
+                        (needsRegionChoice(newUser.province) || true)))) ||
+                  (newUser.role === "regional_magistrate" && !newUser.region) ||
                   isLoading
                 }>
                 {isLoading ? (

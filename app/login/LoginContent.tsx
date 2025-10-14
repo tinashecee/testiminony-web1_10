@@ -37,7 +37,7 @@ export default function LoginContent() {
     setIsLoading(true);
 
     try {
-      const loginResponse = await recordingsApi.loginUser(email, password);
+      const loginResponse = await recordingsApi.loginWebUser(email, password);
       console.log("🔍 Login successful, token received");
       auditLogger.login(email, true, "Successful login from login page");
       await new Promise((resolve) => setTimeout(resolve, 200));

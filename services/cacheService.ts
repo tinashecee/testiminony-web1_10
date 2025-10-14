@@ -29,7 +29,7 @@ class CacheService {
    */
   get<T>(key: string): T | null {
     const item = this.cache.get(key);
-    
+
     if (!item) {
       return null;
     }
@@ -104,15 +104,15 @@ class CacheService {
    */
   invalidatePattern(pattern: string | RegExp): number {
     let deleted = 0;
-    const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
-    
+    const regex = typeof pattern === "string" ? new RegExp(pattern) : pattern;
+
     for (const key of this.cache.keys()) {
       if (regex.test(key)) {
         this.cache.delete(key);
         deleted++;
       }
     }
-    
+
     return deleted;
   }
 }
@@ -122,11 +122,17 @@ export const cacheService = new CacheService();
 
 // Cache keys constants
 export const CACHE_KEYS = {
-  RECORDINGS: 'recordings:all',
+  RECORDINGS: "recordings:all",
+  RECORDINGS_BY_DISTRICT: (district: string) =>
+    `recordings:district:${district.toLowerCase()}`,
+  RECORDINGS_BY_PROVINCE: (province: string) =>
+    `recordings:province:${province.toLowerCase()}`,
+  RECORDINGS_BY_REGION: (region: string) =>
+    `recordings:region:${region.toLowerCase()}`,
   RECORDING: (id: number) => `recording:${id}`,
-  COURTS: 'courts:all',
-  COURTROOMS: 'courtrooms:all',
-  USERS: 'users:all',
+  COURTS: "courts:all",
+  COURTROOMS: "courtrooms:all",
+  USERS: "users:all",
 } as const;
 
 // Auto-cleanup expired entries every 2 minutes

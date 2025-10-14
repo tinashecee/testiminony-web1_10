@@ -34,9 +34,12 @@ import {
   FileCheck,
   FileX,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { AuditLog } from "@/services/auditService";
 import { recordingsApi, Recording } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { generateSampleRecordings } from "@/utils/sampleAuditData";
 import { TranscriptPreviewModal } from "./TranscriptPreviewModal";
 import { toast } from "sonner";
@@ -78,87 +81,67 @@ export function TranscriptReport({
   dateRange,
   isLoading,
 }: TranscriptReportProps) {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [courtFilter, setCourtFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [qualityFilter, setQualityFilter] = useState<string>("all");
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
-  const [transcriptionAssignments, setTranscriptionAssignments] = useState<any[]>([]);
+  const [transcriptionAssignments, setTranscriptionAssignments] = useState<
+    any[]
+  >([]);
   const [sortBy, setSortBy] = useState<keyof RecordingTranscriptData>("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [selectedRecording, setSelectedRecording] =
     useState<RecordingTranscriptData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeScope, setActiveScope] = useState<string>("");
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [offset, setOffset] = useState<number>(0);
+  const [total, setTotal] = useState<number>(0);
 
-  // Load recordings data
+  // Load recordings data (role-based, server-paginated)
   useEffect(() => {
     const loadRecordings = async () => {
       setRecordingsLoading(true);
       try {
-        console.log("Loading recordings from API...");
-        console.log("API Base URL:", "http://142.93.56.4:5000");
-
-        // Test the API endpoint directly first
-        const testResponse = await fetch(
-          "/api/backend/recordings",
-          {
-            method: "GET",
-          }
-        );
-        console.log(
-          "Direct API test - Recordings status:",
-          testResponse.status
-        );
-
-        // Also test if the endpoint exists by checking for 404 vs other errors
-        if (testResponse.status === 404) {
-          console.log("recordings endpoint not found, trying alternative");
-          const fallbackResponse = await fetch(
-            "/api/backend/recordings",
-            {
-              method: "GET",
-              mode: "cors",
-            }
-          );
-          console.log(
-            "Fallback API test - Recordings status:",
-            fallbackResponse.status
-          );
-
-          if (fallbackResponse.ok) {
-            const recordingsJson = await fallbackResponse.json();
-            console.log("Fallback API test - Recordings data:", recordingsJson);
-            setRecordings(recordingsJson);
-            toast.success(
-              `Loaded ${recordingsJson.length} recordings from fallback API`
-            );
-            return;
-          }
+        const role = user?.role;
+        const params: any = {
+          limit: pageSize,
+          offset,
+          q: searchTerm || undefined,
+          court: courtFilter !== "all" ? courtFilter : undefined,
+          sort_by: "date_stamp",
+          sort_dir: "desc",
+        };
+        if (
+          ["station_magistrate", "resident_magistrate"].includes(role || "") &&
+          (user as any)?.district
+        ) {
+          params.district = (user as any).district as string;
+        } else if (
+          role === "provincial_magistrate" &&
+          (user as any)?.province
+        ) {
+          params.province = (user as any).province as string;
+        } else if (role === "regional_magistrate" && (user as any)?.region) {
+          params.region = (user as any).region as string;
         }
 
-        if (testResponse.ok) {
-          const recordingsJson = await testResponse.json();
-          console.log("Direct API test - Recordings data:", recordingsJson);
-          setRecordings(recordingsJson);
-          toast.success(`Loaded ${recordingsJson.length} recordings from API`);
-        } else {
-          console.error(
-            "Direct API test failed:",
-            testResponse.status,
-            testResponse.statusText
-          );
-          throw new Error(
-            `API test failed: ${testResponse.status} ${testResponse.statusText}`
-          );
-        }
+        const res = await recordingsApi.getRecordingsPaginated(params);
+        setRecordings(res.items);
+        setTotal(res.total);
+        let scope = "";
+        if (params.district) scope = `District: ${params.district}`;
+        else if (params.province) scope = `Province: ${params.province}`;
+        else if (params.region) scope = `Region: ${params.region}`;
+        else scope = "All Recordings";
+        setActiveScope(scope);
       } catch (error) {
-        console.error("Failed to load recordings:", error);
-        console.log("Using sample recording data for transcript report");
         // Use sample data as fallback
         const sampleRecordings = generateSampleRecordings();
         setRecordings(sampleRecordings);
-        toast.info("Using sample recording data for transcript report");
       } finally {
         setRecordingsLoading(false);
       }
@@ -170,13 +153,16 @@ export function TranscriptReport({
         const response = await fetch("/api/backend/transcription_users", {
           method: "GET",
         });
-        
+
         if (response.ok) {
           const assignments = await response.json();
           console.log("Transcription assignments loaded:", assignments);
           setTranscriptionAssignments(assignments);
         } else {
-          console.warn("Failed to load transcription assignments:", response.status);
+          console.warn(
+            "Failed to load transcription assignments:",
+            response.status
+          );
         }
       } catch (error) {
         console.warn("Error loading transcription assignments:", error);
@@ -185,7 +171,16 @@ export function TranscriptReport({
 
     loadRecordings();
     loadTranscriptionAssignments();
-  }, []);
+  }, [
+    user?.role,
+    (user as any)?.district,
+    (user as any)?.province,
+    (user as any)?.region,
+    pageSize,
+    offset,
+    searchTerm,
+    courtFilter,
+  ]);
 
   // Process transcript data
   const transcriptData = useMemo(() => {
@@ -302,7 +297,12 @@ export function TranscriptReport({
   // Filter and sort data
   const filteredAndSortedData = useMemo(() => {
     const normalize = (value: unknown) =>
-      (typeof value === "string" ? value : value == null ? "" : String(value)).toLowerCase();
+      (typeof value === "string"
+        ? value
+        : value == null
+        ? ""
+        : String(value)
+      ).toLowerCase();
 
     const query = normalize(searchTerm);
 
@@ -354,7 +354,9 @@ export function TranscriptReport({
       ) {
         const aStr = String(aValue ?? "");
         const bStr = String(bValue ?? "");
-        return sortOrder === "asc" ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+        return sortOrder === "asc"
+          ? aStr.localeCompare(bStr)
+          : bStr.localeCompare(aStr);
       }
 
       return 0;

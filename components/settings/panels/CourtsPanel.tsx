@@ -30,6 +30,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { recordingsApi, Court, Courtroom } from "@/services/api";
+import {
+  getProvinces,
+  getDistricts,
+  needsRegionChoice,
+  getRegion,
+  getRegionOptions,
+} from "@/utils/zwLocations";
 import { useToast } from "@/components/ui/use-toast";
 
 interface NewCourtroom {
@@ -53,6 +60,9 @@ export function CourtsPanel() {
     court_name: "",
     address: "",
     contact_info: "",
+    province: "",
+    district: "",
+    region: "",
   });
   const [newCourtrooms, setNewCourtrooms] = useState<NewCourtroom[]>([
     {
@@ -79,6 +89,9 @@ export function CourtsPanel() {
           court_name: court.court_name,
           address: court.address,
           contact_info: court.contact_info,
+          province: court.province,
+          district: court.district,
+          region: court.region,
           created_at: court.created_at,
           courtrooms: court.courtrooms || [],
         }));
@@ -112,18 +125,65 @@ export function CourtsPanel() {
   }, [toast]);
 
   const handleAddCourt = async () => {
+    // Basic validation: province and district required; region required only if province requires choice
+    if (!newCourt.court_name.trim()) {
+      toast({
+        title: "Validation",
+        description: "Court name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!newCourt.province) {
+      toast({
+        title: "Validation",
+        description: "Province is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!newCourt.district) {
+      toast({
+        title: "Validation",
+        description: "District is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (needsRegionChoice(newCourt.province) && !newCourt.region) {
+      toast({
+        title: "Validation",
+        description: "Please select a region for Mashonaland East",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const court: Court = {
       court_id: Date.now(),
       court_name: newCourt.court_name,
       address: newCourt.address,
       contact_info: newCourt.contact_info,
+      province: newCourt.province || undefined,
+      district: newCourt.district || undefined,
+      region:
+        (needsRegionChoice(newCourt.province)
+          ? newCourt.region
+          : getRegion(newCourt.province) || undefined) || undefined,
       created_at: new Date().toISOString(),
     };
 
     try {
       await recordingsApi.addCourt(court);
       setCourts((prev) => [...prev, court]);
-      setNewCourt({ court_name: "", address: "", contact_info: "" });
+      setNewCourt({
+        court_name: "",
+        address: "",
+        contact_info: "",
+        province: "",
+        district: "",
+        region: "",
+      });
       setIsAddCourtOpen(false);
     } catch (error) {
       console.error("Error adding court:", error);
@@ -315,8 +375,7 @@ export function CourtsPanel() {
                         e.stopPropagation();
                         setCourtToDelete(court);
                         setIsDeleteCourtOpen(true);
-                      }}
-                    >
+                      }}>
                       <Trash2 className="h-4 w-4" />
                     </div>
                   </div>
@@ -408,6 +467,81 @@ export function CourtsPanel() {
                   }))
                 }
               />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Province</Label>
+                <select
+                  className="w-full border rounded-md p-2"
+                  value={newCourt.province}
+                  onChange={(e) => {
+                    const province = e.target.value;
+                    const autoRegion = getRegion(province);
+                    const region = needsRegionChoice(province)
+                      ? ""
+                      : autoRegion || "";
+                    setNewCourt((prev) => ({
+                      ...prev,
+                      province,
+                      district: "",
+                      region,
+                    }));
+                  }}>
+                  <option value="">Select province</option>
+                  {getProvinces().map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>District</Label>
+                <select
+                  className="w-full border rounded-md p-2"
+                  value={newCourt.district}
+                  onChange={(e) =>
+                    setNewCourt((prev) => ({
+                      ...prev,
+                      district: e.target.value,
+                    }))
+                  }
+                  disabled={!newCourt.province}>
+                  <option value="">Select district</option>
+                  {getDistricts(newCourt.province).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Region</Label>
+                {needsRegionChoice(newCourt.province) ? (
+                  <select
+                    className="w-full border rounded-md p-2"
+                    value={newCourt.region}
+                    onChange={(e) =>
+                      setNewCourt((prev) => ({
+                        ...prev,
+                        region: e.target.value,
+                      }))
+                    }>
+                    <option value="">Select region</option>
+                    {getRegionOptions(newCourt.province).map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    placeholder="Region"
+                    value={getRegion(newCourt.province) || ""}
+                    readOnly
+                  />
+                )}
+              </div>
             </div>
           </div>
 

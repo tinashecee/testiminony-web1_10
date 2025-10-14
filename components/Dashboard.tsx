@@ -31,6 +31,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Select,
   SelectContent,
@@ -58,6 +59,7 @@ import { showUploadProgress } from "@/components/ui/upload-progress";
 
 export default function Dashboard() {
   const router = useRouter();
+  const { user } = useAuth();
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -125,7 +127,7 @@ export default function Dashboard() {
     [recordings.length, users.length, courts.length]
   );
 
-  // Fetch recordings with improved error handling and cache awareness
+  // Fetch recordings (role-based) with error handling and cache awareness
   const fetchRecordings = async (forceRefresh = false) => {
     try {
       if (forceRefresh) {
@@ -135,8 +137,34 @@ export default function Dashboard() {
       }
       setError(null);
 
-      const data = await recordingsApi.getAllRecordings(forceRefresh);
-      setRecordings(data);
+      const role = user?.role;
+      let list: Recording[] = [];
+      if (
+        ["station_magistrate", "resident_magistrate"].includes(role || "") &&
+        (user as any)?.district
+      ) {
+        list = await recordingsApi.getRecordingsByDistrict(
+          (user as any).district as string
+        );
+      } else if (role === "provincial_magistrate" && (user as any)?.province) {
+        list = await recordingsApi.getRecordingsByProvince(
+          (user as any).province as string
+        );
+      } else if (role === "regional_magistrate" && (user as any)?.region) {
+        list = await recordingsApi.getRecordingsByRegion(
+          (user as any).region as string
+        );
+      } else {
+        const res = await recordingsApi.getRecordingsPaginated({
+          limit: 20,
+          offset: 0,
+          sort_by: "date_stamp",
+          sort_dir: "desc",
+        });
+        list = res.items;
+      }
+
+      setRecordings(list);
       setRetryAttempt(0); // Reset retry count on success
       setCacheStatus(forceRefresh ? "fresh" : "cached");
     } catch (error) {
@@ -165,7 +193,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchRecordings();
-  }, []);
+  }, [
+    user?.role,
+    (user as any)?.district,
+    (user as any)?.province,
+    (user as any)?.region,
+  ]);
 
   // Fetch courts, courtrooms, and users (non-critical data)
   useEffect(() => {
