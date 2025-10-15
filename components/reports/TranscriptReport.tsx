@@ -192,13 +192,13 @@ export function TranscriptReport({
       const transcriptLength = transcript.length;
       const hasTranscript = transcript.trim().length > 0;
 
-      // Use transcript_status from API, fallback to calculated status
+      // Use transcript_status strictly; fallback to 'pending' if null/undefined
       let transcriptStatus:
         | "completed"
         | "in_progress"
         | "pending"
         | "review"
-        | "none" = "none";
+        | "none" = "pending";
       if (recording.transcript_status) {
         transcriptStatus = recording.transcript_status as
           | "completed"
@@ -206,10 +206,6 @@ export function TranscriptReport({
           | "pending"
           | "review"
           | "none";
-      } else if (hasTranscript) {
-        transcriptStatus = "completed";
-      } else {
-        transcriptStatus = "pending";
       }
 
       // Find assigned user from transcription assignments
@@ -604,6 +600,67 @@ export function TranscriptReport({
                 </Button>
               </div>
             )}
+
+            {/* Pagination Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+              <div className="text-sm text-muted-foreground">
+                {total > 0 ? (
+                  <span>
+                    Showing {offset + 1} to {Math.min(offset + pageSize, total)}{" "}
+                    of {total}
+                  </span>
+                ) : (
+                  <span>No results</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    if (value === "all") {
+                      setPageSize(100000);
+                      setOffset(0);
+                    } else {
+                      const n = parseInt(value, 10);
+                      setPageSize(Number.isNaN(n) ? 50 : n);
+                      setOffset(0);
+                    }
+                  }}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Page size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 per page</SelectItem>
+                    <SelectItem value="20">20 per page</SelectItem>
+                    <SelectItem value="50">50 per page</SelectItem>
+                    <SelectItem value="100">100 per page</SelectItem>
+                    <SelectItem value="all">All</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setOffset((prev) => Math.max(0, prev - pageSize))
+                    }
+                    disabled={offset === 0}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setOffset((prev) =>
+                        prev + pageSize < total ? prev + pageSize : prev
+                      )
+                    }
+                    disabled={offset + pageSize >= total}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
