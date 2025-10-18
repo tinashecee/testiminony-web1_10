@@ -452,6 +452,90 @@ export function TranscriptReport({
     setSelectedRecording(null);
   };
 
+  const handleSaveTranscript = async () => {
+    // Reload recordings data after transcript is saved
+    try {
+      const role = user?.role;
+      const params: any = {
+        limit: pageSize,
+        offset,
+        q: searchTerm || undefined,
+        court: courtFilter !== "all" ? courtFilter : undefined,
+        sort_by: "date_stamp",
+        sort_dir: "desc",
+      };
+      if (
+        ["station_magistrate", "resident_magistrate"].includes(role || "") &&
+        (user as any)?.district
+      ) {
+        params.district = (user as any).district as string;
+      } else if (role === "provincial_magistrate" && (user as any)?.province) {
+        params.province = (user as any).province as string;
+      } else if (role === "regional_magistrate" && (user as any)?.region) {
+        params.region = (user as any).region as string;
+      }
+
+      const res = await recordingsApi.getRecordingsPaginated(params);
+      setRecordings(res.items);
+      setTotal(res.total);
+
+      // Update the selected recording with the latest data
+      if (selectedRecording) {
+        const updatedRecording = res.items.find(
+          (r: Recording) => r.id === selectedRecording.id
+        );
+        if (updatedRecording) {
+          const transcript = updatedRecording.transcript || "";
+          const wordCount = transcript.trim()
+            ? transcript.trim().split(/\s+/).length
+            : 0;
+          const transcriptLength = transcript.length;
+          const hasTranscript = transcript.trim().length > 0;
+
+          let transcriptStatus:
+            | "completed"
+            | "in_progress"
+            | "pending"
+            | "review"
+            | "none" = "pending";
+          if (updatedRecording.transcript_status) {
+            transcriptStatus = updatedRecording.transcript_status as
+              | "completed"
+              | "in_progress"
+              | "pending"
+              | "review"
+              | "none";
+          }
+
+          const assignment = transcriptionAssignments.find(
+            (assignment) => assignment.case_id === updatedRecording.id
+          );
+          const assignedTo = assignment ? assignment.user_name : "Unassigned";
+
+          setSelectedRecording({
+            id: updatedRecording.id,
+            caseNumber: updatedRecording.case_number,
+            assignedTo,
+            title: updatedRecording.title,
+            date: updatedRecording.date_stamp,
+            court: updatedRecording.court,
+            transcript,
+            transcriptLength,
+            wordCount,
+            hasTranscript,
+            transcriptStatus,
+            lastModified: updatedRecording.date_stamp,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to reload recordings:", error);
+      // Use sample data as fallback
+      const sampleRecordings = generateSampleRecordings();
+      setRecordings(sampleRecordings);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Filters and Controls */}
@@ -1010,6 +1094,7 @@ export function TranscriptReport({
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         recording={selectedRecording}
+        onSave={handleSaveTranscript}
       />
     </div>
   );
