@@ -129,9 +129,44 @@ export function TranscriptReport({
           params.region = (user as any).region as string;
         }
 
-        const res = await recordingsApi.getRecordingsPaginated(params);
-        setRecordings(res.items);
-        setTotal(res.total);
+        const isAll = pageSize >= 100000;
+        if (isAll) {
+          const pageLimit = 100;
+          // First request to determine total
+          const firstPage = await recordingsApi.getRecordingsPaginated({
+            ...params,
+            limit: pageLimit,
+            offset: 0,
+          });
+          const finalTotal = Number(firstPage.total) || firstPage.items.length;
+          let accumulated: Recording[] = [...firstPage.items];
+
+          // Safety cap to avoid runaway loops if API misreports totals
+          const maxIterations = Math.ceil(finalTotal / pageLimit) + 2;
+          let iterations = 0;
+
+          for (
+            let currentOffset = firstPage.items.length;
+            currentOffset < finalTotal && iterations < maxIterations;
+            currentOffset += pageLimit
+          ) {
+            const page = await recordingsApi.getRecordingsPaginated({
+              ...params,
+              limit: pageLimit,
+              offset: currentOffset,
+            });
+            if (!page.items || page.items.length === 0) break;
+            accumulated = accumulated.concat(page.items);
+            iterations += 1;
+          }
+
+          setRecordings(accumulated);
+          setTotal(finalTotal || accumulated.length);
+        } else {
+          const res = await recordingsApi.getRecordingsPaginated(params);
+          setRecordings(res.items);
+          setTotal(res.total);
+        }
         let scope = "";
         if (params.district) scope = `District: ${params.district}`;
         else if (params.province) scope = `Province: ${params.province}`;
@@ -742,6 +777,13 @@ export function TranscriptReport({
                     disabled={offset + pageSize >= total}>
                     <ChevronRight className="h-4 w-4" />
                   </Button>
+                  {/* Page indicator */}
+                  {total > 0 && pageSize < 100000 && (
+                    <span className="text-xs text-muted-foreground ml-2">
+                      Page {Math.floor(offset / pageSize) + 1} of{" "}
+                      {Math.max(1, Math.ceil(total / pageSize))}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

@@ -31,6 +31,10 @@ import {
   X as CloseIcon,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { recordingsApi } from "@/services/api";
+import { saveAs } from "file-saver";
+// @ts-ignore
+import htmlDocx from "html-docx-js/dist/html-docx";
 import { TranscriptionAssignments } from "./TranscriptionAssignments";
 import { TranscriptComments } from "./TranscriptComments";
 import { useAuth } from "@/contexts/AuthContext";
@@ -88,23 +92,9 @@ export function TranscriptPreviewModal({
 
     setIsSaving(true);
     try {
-      const response = await fetch(
-        `/api/backend/case_recordings/${recording.id}/transcript`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            transcript: editedTranscript,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to save transcript");
-      }
+      await recordingsApi.updateRecording(recording.id, {
+        transcript: editedTranscript,
+      } as any);
 
       toast.success("Transcript updated successfully");
       setIsEditMode(false);
@@ -141,28 +131,58 @@ export function TranscriptPreviewModal({
 
   const handleExportTranscript = () => {
     try {
-      const content = `Case Number: ${recording.caseNumber}
-Assigned To: ${recording.assignedTo}
-Title: ${recording.title}
-Date: ${new Date(recording.date).toLocaleDateString()}
-Court: ${recording.court}
-Word Count: ${recording.wordCount}
-Transcript Progress: ${recording.transcriptStatus}
+      const headerHtml = `
+        <h1 style="margin-bottom:4px;">Transcript</h1>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
+          <tr>
+            <td><strong>Case Number:</strong> ${recording.caseNumber}</td>
+            <td><strong>Assigned To:</strong> ${recording.assignedTo}</td>
+          </tr>
+          <tr>
+            <td><strong>Title:</strong> ${recording.title}</td>
+            <td><strong>Date:</strong> ${new Date(
+              recording.date
+            ).toLocaleDateString()}</td>
+          </tr>
+          <tr>
+            <td><strong>Court:</strong> ${recording.court}</td>
+            <td><strong>Word Count:</strong> ${recording.wordCount.toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td colspan="2"><strong>Transcript Progress:</strong> ${
+              recording.transcriptStatus
+            }</td>
+          </tr>
+        </table>
+      `;
 
-TRANSCRIPT:
-${recording.transcript}`;
+      const bodyHtml = `
+        <div>${(recording.transcript || "").toString()}</div>
+      `;
 
-      const blob = new Blob([content], { type: "text/plain" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `transcript-${recording.caseNumber}-${
-        new Date().toISOString().split("T")[0]
-      }.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      const fullHtml = `<!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Transcript</title>
+          <style>
+            body { font-family: Arial, sans-serif; }
+            table td { padding: 2px 6px; }
+          </style>
+        </head>
+        <body>
+          ${headerHtml}
+          ${bodyHtml}
+        </body>
+      </html>`;
+
+      const converted = htmlDocx.asBlob(fullHtml);
+      saveAs(
+        converted,
+        `transcript-${recording.caseNumber}-${
+          new Date().toISOString().split("T")[0]
+        }.docx`
+      );
 
       toast.success("Transcript exported successfully");
     } catch (error) {

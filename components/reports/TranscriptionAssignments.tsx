@@ -86,22 +86,23 @@ export function TranscriptionAssignments({
   const [userSearchQuery, setUserSearchQuery] = useState("");
 
   // Get selected user details
-  const selectedUser = users.find(user => user.id?.toString() === selectedUserId);
+  const selectedUser = users.find(
+    (user) => user.id?.toString() === selectedUserId
+  );
 
   // Filter available users (not already assigned)
   const availableUsers = users.filter(
     (user) =>
       user.id &&
-      !assignments.some(
-        (assignment) => assignment.user_id === user.id
-      )
+      !assignments.some((assignment) => assignment.user_id === user.id)
   );
 
   // Filter users based on search query
-  const filteredUsers = availableUsers.filter(user =>
-    user.name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-    user.email?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-    user.role?.toLowerCase().includes(userSearchQuery.toLowerCase())
+  const filteredUsers = availableUsers.filter(
+    (user) =>
+      user.name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+      user.email?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+      user.role?.toLowerCase().includes(userSearchQuery.toLowerCase())
   );
 
   // Load assignments and users
@@ -127,118 +128,20 @@ export function TranscriptionAssignments({
   const loadData = async () => {
     setLoading(true);
     try {
-      console.log("Loading assignments for case:", caseId);
-      console.log("API Base URL:", "http://142.93.56.4:5000");
-
-      // First, try to get assignments for this specific case
+      // Prefer typed API that includes auth headers and retries
       try {
-        console.log("Trying to get assignments for case:", caseId);
-        const testAssignments = await fetch(
-          `/api/backend/transcription_users/${caseId}`,
-          {
-            method: "GET",
-            mode: "cors",
-          }
-        );
-        console.log(
-          "Direct API test - Assignments for case status:",
-          testAssignments.status
-        );
-
-        if (testAssignments.ok) {
-          const assignmentsJson = await testAssignments.json();
-          console.log(
-            "Direct API test - Assignments for case data:",
-            assignmentsJson
-          );
-          setAssignments(assignmentsJson);
-        } else if (testAssignments.status === 404) {
-          console.log(
-            "Specific case endpoint not found, trying all assignments"
-          );
-          // Fallback to getting all assignments and filtering
-          const allAssignmentsResponse = await fetch(
-            "/api/backend/transcription_users",
-            {
-              method: "GET",
-              mode: "cors",
-            }
-          );
-          console.log(
-            "All assignments API test status:",
-            allAssignmentsResponse.status
-          );
-
-          if (allAssignmentsResponse.ok) {
-            const allAssignmentsJson = await allAssignmentsResponse.json();
-            console.log("All assignments data:", allAssignmentsJson);
-
-            // Filter assignments for this case
-            const filteredAssignments = allAssignmentsJson.filter(
-              (assignment: any) => assignment.case_id === caseId
-            );
-            console.log(
-              "Filtered assignments for case",
-              caseId,
-              ":",
-              filteredAssignments
-            );
-            setAssignments(filteredAssignments);
-          } else {
-            console.error(
-              "All assignments API failed:",
-              allAssignmentsResponse.status,
-              allAssignmentsResponse.statusText
-            );
-          }
-        } else {
-          console.error(
-            "Assignments API failed:",
-            testAssignments.status,
-            testAssignments.statusText
-          );
-        }
-      } catch (directError) {
-        console.error("Direct API test error:", directError);
+        const byCase = await transcriptionApi.getAssignmentsByCase(caseId);
+        setAssignments(byCase);
+      } catch (e) {
+        // Fallback: load all and filter
+        const all = await transcriptionApi.getAssignments();
+        setAssignments(all.filter((a) => a.case_id === caseId));
       }
 
       // Fetch available users for assignment
       try {
-        // Test the users endpoint directly first
-        console.log("Testing /users endpoint directly...");
-        const testUsersResponse = await fetch("/api/backend/users", {
-          method: "GET",
-        });
-        console.log(
-          "Direct API test - Users status:",
-          testUsersResponse.status
-        );
-
-        if (testUsersResponse.ok) {
-          const usersJson = await testUsersResponse.json();
-          console.log("Direct API test - Users data:", usersJson);
-          console.log("Number of users from direct API:", usersJson.length);
-
-          // Check the structure of the first user if any
-          if (usersJson.length > 0) {
-            console.log("First user structure:", usersJson[0]);
-            console.log("User ID type:", typeof usersJson[0].id);
-            console.log("User ID value:", usersJson[0].id);
-          }
-
-          setUsers(usersJson);
-        } else {
-          console.error(
-            "Direct users API test failed:",
-            testUsersResponse.status,
-            testUsersResponse.statusText
-          );
-          // Try the usersApi as fallback
-          const usersData = await usersApi.getUsers();
-          console.log("Users loaded via usersApi:", usersData);
-          console.log("Number of users loaded:", usersData.length);
-          setUsers(usersData);
-        }
+        const usersData = await usersApi.getUsers();
+        setUsers(usersData);
       } catch (userError) {
         console.error("Failed to load users:", userError);
         // Set empty users array if API fails
@@ -263,40 +166,14 @@ export function TranscriptionAssignments({
     console.log("Adding assignment for case:", caseId, "user:", selectedUserId);
     setIsSubmitting(true);
     try {
-      // Test the assignment endpoint directly first
-      const assignmentData = {
-        case_id: caseId,
-        user_id: parseInt(selectedUserId),
-      };
-      console.log("Assignment data to send:", assignmentData);
-
-      const testResponse = await fetch(
-        "/api/backend/add_transcription_user",
-        {
-          method: "POST",
-          mode: "cors",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(assignmentData),
-        }
+      const response = await transcriptionApi.addAssignment(
+        caseId,
+        parseInt(selectedUserId)
       );
-
-      console.log("Assignment API response status:", testResponse.status);
-
-      if (testResponse.ok) {
-        const responseData = await testResponse.json();
-        console.log("Assignment API response data:", responseData);
-        toast.success("User assigned successfully");
-        handleDialogClose();
-        loadData();
-      } else {
-        const errorText = await testResponse.text();
-        console.error("Assignment API failed:", testResponse.status, errorText);
-        throw new Error(
-          `Assignment failed: ${testResponse.status} ${errorText}`
-        );
-      }
+      console.log("Assignment API response data:", response);
+      toast.success("User assigned successfully");
+      handleDialogClose();
+      loadData();
     } catch (error) {
       console.error("Failed to add assignment:", error);
       const errorMessage =
@@ -310,27 +187,10 @@ export function TranscriptionAssignments({
   const handleRemoveAssignment = async (assignmentId: number) => {
     console.log("Removing assignment with ID:", assignmentId);
     try {
-      // Test the delete endpoint directly first
-      const deleteResponse = await fetch(
-        `/api/backend/transcription_users/${assignmentId}`,
-        {
-          method: "DELETE",
-          mode: "cors",
-        }
-      );
-
-      console.log("Delete API response status:", deleteResponse.status);
-
-      if (deleteResponse.ok) {
-        const responseData = await deleteResponse.json();
-        console.log("Delete API response data:", responseData);
-        toast.success("Assignment removed successfully");
-        loadData();
-      } else {
-        const errorText = await deleteResponse.text();
-        console.error("Delete API failed:", deleteResponse.status, errorText);
-        throw new Error(`Delete failed: ${deleteResponse.status} ${errorText}`);
-      }
+      const response = await transcriptionApi.deleteAssignment(assignmentId);
+      console.log("Delete API response data:", response);
+      toast.success("Assignment removed successfully");
+      loadData();
     } catch (error) {
       console.error("Failed to remove assignment:", error);
       const errorMessage =
@@ -401,7 +261,9 @@ export function TranscriptionAssignments({
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="user-select">Select User</Label>
-                    <Popover open={isUserComboboxOpen} onOpenChange={setIsUserComboboxOpen}>
+                    <Popover
+                      open={isUserComboboxOpen}
+                      onOpenChange={setIsUserComboboxOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
@@ -409,13 +271,13 @@ export function TranscriptionAssignments({
                           aria-expanded={isUserComboboxOpen}
                           className="w-full justify-between">
                           {selectedUser ? (
-                                <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2">
                               <span>{selectedUser.name}</span>
-                                  <Badge
-                                    variant="outline"
+                              <Badge
+                                variant="outline"
                                 className={getRoleColor(selectedUser.role)}>
                                 {selectedUser.role}
-                                  </Badge>
+                              </Badge>
                             </div>
                           ) : (
                             "Search and select a user..."
@@ -436,17 +298,20 @@ export function TranscriptionAssignments({
                                 <div className="py-6 text-center text-sm">
                                   <Users className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
                                   <p className="text-muted-foreground">
-                                    {users.length === 0 
-                                      ? "No users available" 
-                                      : "All users are already assigned to this case"
-                                    }
+                                    {users.length === 0
+                                      ? "No users available"
+                                      : "All users are already assigned to this case"}
                                   </p>
                                 </div>
                               ) : (
                                 <div className="py-6 text-center text-sm text-muted-foreground">
                                   <Search className="mx-auto h-8 w-8 mb-2" />
-                                  <p>No users found matching "{userSearchQuery}"</p>
-                                  <p className="text-xs mt-1">Try searching by name, email, or role</p>
+                                  <p>
+                                    No users found matching "{userSearchQuery}"
+                                  </p>
+                                  <p className="text-xs mt-1">
+                                    Try searching by name, email, or role
+                                  </p>
                                 </div>
                               )}
                             </CommandEmpty>
@@ -455,7 +320,9 @@ export function TranscriptionAssignments({
                                 <CommandItem
                                   key={user.id!}
                                   value={`${user.name} ${user.email} ${user.role}`}
-                                  onSelect={() => handleUserSelect(user.id!.toString())}>
+                                  onSelect={() =>
+                                    handleUserSelect(user.id!.toString())
+                                  }>
                                   <Check
                                     className={`mr-2 h-4 w-4 ${
                                       selectedUserId === user.id?.toString()
@@ -465,14 +332,18 @@ export function TranscriptionAssignments({
                                   />
                                   <div className="flex items-center gap-2 flex-1">
                                     <div className="flex flex-col">
-                                      <span className="font-medium">{user.name}</span>
+                                      <span className="font-medium">
+                                        {user.name}
+                                      </span>
                                       <span className="text-sm text-muted-foreground">
                                         {user.email}
                                       </span>
                                     </div>
                                     <Badge
                                       variant="outline"
-                                      className={`ml-auto ${getRoleColor(user.role)}`}>
+                                      className={`ml-auto ${getRoleColor(
+                                        user.role
+                                      )}`}>
                                       {user.role}
                                     </Badge>
                                   </div>
@@ -485,9 +356,7 @@ export function TranscriptionAssignments({
                     </Popover>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={handleDialogClose}>
+                    <Button variant="outline" onClick={handleDialogClose}>
                       Cancel
                     </Button>
                     <Button

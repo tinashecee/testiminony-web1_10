@@ -1,6 +1,8 @@
 import { cacheService, CACHE_KEYS } from "./cacheService";
 
-const API_BASE_URL = "/api";
+// Use Next.js API proxy to avoid CORS issues
+// The proxy forwards to: https://testimonyapi.soxfort.com (production) or http://142.93.56.4:5000 (development)
+const API_BASE_URL = "/api/backend";
 
 // Configuration for API requests
 const API_CONFIG = {
@@ -22,8 +24,6 @@ const fetchWithTimeout = async (
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
-      mode: "cors", // Enable CORS
-      credentials: "include", // Include credentials for CORS
     });
     clearTimeout(timeoutId);
     return response;
@@ -31,11 +31,6 @@ const fetchWithTimeout = async (
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`Request timed out after ${timeout}ms`);
-    }
-    if (error instanceof Error && error.message.includes("CORS")) {
-      throw new Error(
-        "CORS error: The API server may not be configured to allow requests from this domain"
-      );
     }
     throw error;
   }
@@ -219,7 +214,6 @@ export const recordingsApi = {
     file: File,
     targetFilename: string
   ): Promise<{ filename: string }> => {
-    const DIRECT_BASE = `http://142.93.56.4:5000`;
     const form = new FormData();
     form.append("file", file, targetFilename);
 
@@ -230,7 +224,7 @@ export const recordingsApi = {
       type: file.type,
     });
     const startedAt = Date.now();
-    const response = await fetch(`${DIRECT_BASE}/upload`, {
+    const response = await fetch(`${API_BASE_URL}/upload`, {
       method: "POST",
       body: form,
     });
@@ -267,7 +261,6 @@ export const recordingsApi = {
 
   uploadRecording: async (meta: Record<string, string>): Promise<void> => {
     // Direct form-encoded call (server reads request.form)
-    const DIRECT_BASE = `http://142.93.56.4:5000`;
     const body = new URLSearchParams();
     Object.entries(meta).forEach(([k, v]) => {
       if (v !== undefined && v !== null) body.append(k, String(v));
@@ -278,7 +271,7 @@ export const recordingsApi = {
       Object.fromEntries(body)
     );
     const startedAtMeta = Date.now();
-    const response = await fetch(`${DIRECT_BASE}/upload_recording`, {
+    const response = await fetch(`${API_BASE_URL}/upload_recording`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",

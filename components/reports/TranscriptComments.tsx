@@ -100,33 +100,8 @@ export function TranscriptComments({
     setLoading(true);
     try {
       console.log("Loading comments for case:", caseId);
-      console.log("API Base URL:", "http://142.93.56.4:5000");
-
-      // First, let's test the API endpoint directly
-      try {
-        const testComments = await fetch(
-          `/api/backend/transcript_comments/${caseId}`,
-          {
-            method: "GET",
-            mode: "cors",
-          }
-        );
-        console.log("Direct API test - Comments status:", testComments.status);
-
-        if (testComments.ok) {
-          const commentsJson = await testComments.json();
-          console.log("Direct API test - Comments data:", commentsJson);
-          setComments(commentsJson);
-        } else {
-          console.error(
-            "Direct API test failed:",
-            testComments.status,
-            testComments.statusText
-          );
-        }
-      } catch (directError) {
-        console.error("Direct API test error:", directError);
-      }
+      const items = await commentsApi.getComments(caseId);
+      setComments(items);
     } catch (error) {
       console.error("Failed to load comments:", error);
       const errorMessage =
@@ -154,66 +129,21 @@ export function TranscriptComments({
 
     setIsSubmitting(true);
     try {
-      // First, we need to get the actual database user ID
-      // The currentUser might not have the correct database ID
-      console.log("Fetching users to find correct user ID...");
-      const usersResponse = await fetch("/api/backend/users", {
-        method: "GET",
-      });
-
-      if (!usersResponse.ok) {
-        throw new Error(`Failed to fetch users: ${usersResponse.status}`);
+      const commenterId = currentUser?.id;
+      if (!commenterId) {
+        throw new Error("Missing current user id");
       }
-
-      const users = await usersResponse.json();
-      console.log("Available users:", users);
-
-      // Find the user by email (assuming currentUser has email)
-      const dbUser = users.find(
-        (user: any) => user.email === currentUser.email
+      await commentsApi.addComment(
+        caseId,
+        commenterId,
+        commentType,
+        commentText.trim()
       );
-      if (!dbUser) {
-        throw new Error("User not found in database");
-      }
-
-      console.log("Found database user:", dbUser);
-
-      // Test the comment endpoint directly first
-      const commentData = {
-        case_id: caseId,
-        commenter: dbUser.id, // Use the database user ID
-        comment_type: commentType,
-        comment_text: commentText.trim(),
-      };
-      console.log("Comment data to send:", commentData);
-
-      const testResponse = await fetch(
-        "/api/backend/add_transcription_comment",
-        {
-          method: "POST",
-          mode: "cors",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(commentData),
-        }
-      );
-
-      console.log("Comment API response status:", testResponse.status);
-
-      if (testResponse.ok) {
-        const responseData = await testResponse.json();
-        console.log("Comment API response data:", responseData);
-        toast.success("Comment added successfully");
-        setIsAddDialogOpen(false);
-        setCommentText("");
-        setCommentType("general");
-        loadComments();
-      } else {
-        const errorText = await testResponse.text();
-        console.error("Comment API failed:", testResponse.status, errorText);
-        throw new Error(`Comment failed: ${testResponse.status} ${errorText}`);
-      }
+      toast.success("Comment added successfully");
+      setIsAddDialogOpen(false);
+      setCommentText("");
+      setCommentType("general");
+      loadComments();
     } catch (error) {
       console.error("Failed to add comment:", error);
       const errorMessage =
@@ -235,45 +165,17 @@ export function TranscriptComments({
 
     setIsSubmitting(true);
     try {
-      // Test the update endpoint directly first
-      const updateData = {
-        comment_type: commentType,
-        comment_text: commentText.trim(),
-      };
-      console.log("Update comment data:", updateData);
-
-      const testResponse = await fetch(
-        `/api/backend/transcript_comments/${editingComment.id}`,
-        {
-          method: "PUT",
-          mode: "cors",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(updateData),
-        }
+      await commentsApi.updateComment(
+        editingComment.id,
+        commentType,
+        commentText.trim()
       );
-
-      console.log("Update comment API response status:", testResponse.status);
-
-      if (testResponse.ok) {
-        const responseData = await testResponse.json();
-        console.log("Update comment API response data:", responseData);
-        toast.success("Comment updated successfully");
-        setIsEditDialogOpen(false);
-        setEditingComment(null);
-        setCommentText("");
-        setCommentType("general");
-        loadComments();
-      } else {
-        const errorText = await testResponse.text();
-        console.error(
-          "Update comment API failed:",
-          testResponse.status,
-          errorText
-        );
-        throw new Error(`Update failed: ${testResponse.status} ${errorText}`);
-      }
+      toast.success("Comment updated successfully");
+      setIsEditDialogOpen(false);
+      setEditingComment(null);
+      setCommentText("");
+      setCommentType("general");
+      loadComments();
     } catch (error) {
       console.error("Failed to update comment:", error);
       const errorMessage =
@@ -287,31 +189,9 @@ export function TranscriptComments({
   const handleDeleteComment = async (commentId: number) => {
     console.log("Deleting comment with ID:", commentId);
     try {
-      // Test the delete endpoint directly first
-      const deleteResponse = await fetch(
-        `/api/backend/transcript_comments/${commentId}`,
-        {
-          method: "DELETE",
-          mode: "cors",
-        }
-      );
-
-      console.log("Delete comment API response status:", deleteResponse.status);
-
-      if (deleteResponse.ok) {
-        const responseData = await deleteResponse.json();
-        console.log("Delete comment API response data:", responseData);
-        toast.success("Comment deleted successfully");
-        loadComments();
-      } else {
-        const errorText = await deleteResponse.text();
-        console.error(
-          "Delete comment API failed:",
-          deleteResponse.status,
-          errorText
-        );
-        throw new Error(`Delete failed: ${deleteResponse.status} ${errorText}`);
-      }
+      await commentsApi.deleteComment(commentId);
+      toast.success("Comment deleted successfully");
+      loadComments();
     } catch (error) {
       console.error("Failed to delete comment:", error);
       const errorMessage =
