@@ -1,5 +1,10 @@
 {
   "pages": {
+    "/api/backend/[...path]/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/backend/[...path]/route.js"
+    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -11,30 +16,30 @@
       "static/chunks/main-app.js",
       "static/chunks/app/loading.js"
     ],
-    "/transcripts/page": [
+    "/login/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/transcripts/page.js"
-    ],
-    "/api/backend/[...path]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/backend/[...path]/route.js"
+      "static/chunks/app/login/page.js"
     ],
     "/api/audit/[...path]/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/audit/[...path]/route.js"
     ],
-    "/recordings/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/recordings/page.js"
+      "static/chunks/app/page.js"
     ],
-    "/_not-found/page": [
+    "/settings/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/settings/page.js"
+    ],
+    "/transcripts/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/transcripts/page.js"
     ]
   }
 }
