@@ -76,7 +76,7 @@ const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(
   // Only use the filename, not the full path
   const fileName = file_path.split("/").pop() || file_path;
   const encodedPath = encodeURIComponent(fileName);
-  const audioUrl = `https://testimonyapi.soxfort.com/recordings/${encodedPath}`;
+  const audioUrl = `http://41.220.20.218:5000/recordings/${encodedPath}`;
 
   // Initialize Web Audio API nodes
   const initializeAudioNodes = useCallback(() => {

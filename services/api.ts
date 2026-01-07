@@ -2,9 +2,7 @@ import { cacheService, CACHE_KEYS } from "./cacheService";
 
 // Use Next.js API proxy to avoid CORS issues
 // The proxy forwards to: https://testimonyapi.soxfort.com (production) or http://142.93.56.4:5000 (development)
-const PRIMARY_API_BASE_URL = "https://testimonyapi.soxfort.com";
-const FALLBACK_API_BASE_URL = "http://41.220.20.218:5000";
-const API_BASE_URL = PRIMARY_API_BASE_URL;
+const API_BASE_URL = "/api/backend";
 
 // Configuration for API requests
 const API_CONFIG = {
@@ -55,28 +53,7 @@ const retryFetch = async (
       return response;
     } catch (error) {
       lastError = error as Error;
-      console.warn(`API request attempt ${attempt} failed (primary):`, error);
-
-      // Try fallback base URL if the request targets the primary API base
-      if (typeof url === "string" && url.startsWith(PRIMARY_API_BASE_URL)) {
-        const fallbackUrl = url.replace(
-          PRIMARY_API_BASE_URL,
-          FALLBACK_API_BASE_URL
-        );
-        try {
-          console.log(
-            `API request attempt ${attempt}/${maxRetries} to fallback ${fallbackUrl}`
-          );
-          const fallbackResponse = await fetchWithTimeout(fallbackUrl, options);
-          return fallbackResponse;
-        } catch (fallbackError) {
-          lastError = fallbackError as Error;
-          console.warn(
-            `API request attempt ${attempt} failed (fallback):`,
-            fallbackError
-          );
-        }
-      }
+      console.warn(`API request attempt ${attempt} failed:`, error);
 
       // Don't retry on the last attempt
       if (attempt === maxRetries) {
@@ -91,14 +68,15 @@ const retryFetch = async (
   }
 
   throw new Error(
-    `API request failed after ${maxRetries} attempts. Last error: ${
-      lastError?.message || "Unknown error"
+    `API request failed after ${maxRetries} attempts. Last error: ${lastError?.message || "Unknown error"
     }`
   );
 };
 
 // Helper function to get the token from cookies
+// Helper function to get the token from cookies
 const getToken = () => {
+  if (typeof document === "undefined") return undefined;
   return document.cookie
     .split("; ")
     .find((row) => row.startsWith("token="))
@@ -193,19 +171,19 @@ export interface User {
   name: string;
   email: string;
   role:
-    | "super_admin"
-    | "admin"
-    | "court_recorder"
-    | "registrar"
-    | "judge"
-    | "station_magistrate"
-    | "resident_magistrate"
-    | "provincial_magistrate"
-    | "regional_magistrate"
-    | "senior_regional_magistrate"
-    | "clerk_of_court"
-    | "transcriber"
-    | "recording_supervisor";
+  | "super_admin"
+  | "admin"
+  | "court_recorder"
+  | "registrar"
+  | "judge"
+  | "station_magistrate"
+  | "resident_magistrate"
+  | "provincial_magistrate"
+  | "regional_magistrate"
+  | "senior_regional_magistrate"
+  | "clerk_of_court"
+  | "transcriber"
+  | "recording_supervisor";
   court: string; // Court associated with the user
   contact_info: string; // Contact information
   // Optional location fields (role-based requirements in UI)
@@ -247,7 +225,7 @@ export const recordingsApi = {
       type: file.type,
     });
     const startedAt = Date.now();
-    const response = await retryFetch(`${API_BASE_URL}/upload`, {
+    const response = await fetch(`${API_BASE_URL}/upload`, {
       method: "POST",
       body: form,
     });
@@ -294,7 +272,7 @@ export const recordingsApi = {
       Object.fromEntries(body)
     );
     const startedAtMeta = Date.now();
-    const response = await retryFetch(`${API_BASE_URL}/upload_recording`, {
+    const response = await fetch(`${API_BASE_URL}/upload_recording`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -371,7 +349,7 @@ export const recordingsApi = {
     }
 
     console.log(`🌐 Fetching recording ${id} from API...`);
-    const response = await retryFetch(`${API_BASE_URL}/recordings/${id}`);
+    const response = await fetch(`${API_BASE_URL}/recordings/${id}`);
     if (!response.ok) {
       throw new Error("Failed to fetch recording");
     }
@@ -404,13 +382,10 @@ export const recordingsApi = {
       }
     });
     console.log(formData);
-    const response = await retryFetch(
-      `${API_BASE_URL}/update_recording/${id}`,
-      {
-        method: "PUT",
-        body: formData,
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/update_recording/${id}`, {
+      method: "PUT",
+      body: formData,
+    });
 
     if (!response.ok) {
       throw new Error("Failed to update recording");
@@ -520,7 +495,7 @@ export const recordingsApi = {
   addCourtroom: async (
     courtroom: Omit<Courtroom, "courtroom_id">
   ): Promise<void> => {
-    const response = await retryFetch(`${API_BASE_URL}/add_courtroom`, {
+    const response = await fetch(`${API_BASE_URL}/add_courtroom`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -548,7 +523,7 @@ export const recordingsApi = {
   },
 
   addCourt: async (court: Omit<Court, "court_id">): Promise<void> => {
-    const response = await retryFetch(`${API_BASE_URL}/add_court`, {
+    const response = await fetch(`${API_BASE_URL}/add_court`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -561,30 +536,33 @@ export const recordingsApi = {
   },
 
   deleteCourt: async (court_id: number): Promise<void> => {
-    const response = await retryFetch(
-      `${API_BASE_URL}/delete_court/${court_id}`,
-      {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/delete_court/${court_id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
     if (!response.ok) {
       throw new Error("Failed to delete court");
     }
   },
 
   addUser: async (user: Omit<User, "date_created">): Promise<void> => {
-    const response = await retryFetch(`${API_BASE_URL}/add_user`, {
+    const response = await fetch(`${API_BASE_URL}/add_user`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ ...user, date_created: new Date().toISOString() }),
     });
     if (!response.ok) {
-      throw new Error("Failed to add user");
+      const errorText = await response.text();
+      console.error("Failed to add user:", response.status, errorText);
+
+      // Check for duplicate email error
+      if (errorText.includes("Duplicate entry") && errorText.includes("email")) {
+        throw new Error(`A user with email "${user.email}" already exists. Please use a different email address.`);
+      }
+
+      throw new Error(`Failed to add user: ${response.status} - ${errorText}`);
     }
 
     // Invalidate users cache
@@ -626,7 +604,7 @@ export const recordingsApi = {
   editUser: async (
     user: Omit<User, "date_created"> & { id: number }
   ): Promise<void> => {
-    const response = await retryFetch(`${API_BASE_URL}/edit_user/${user.id}`, {
+    const response = await fetch(`${API_BASE_URL}/edit_user/${user.id}`, {
       method: "PUT",
       headers: getAuthHeaders(),
       body: JSON.stringify(user),
@@ -637,7 +615,7 @@ export const recordingsApi = {
   },
 
   deleteUser: async (userId: number): Promise<void> => {
-    const response = await retryFetch(`${API_BASE_URL}/delete_user/${userId}`, {
+    const response = await fetch(`${API_BASE_URL}/delete_user/${userId}`, {
       method: "DELETE",
       headers: getAuthHeaders(),
     });
@@ -757,7 +735,7 @@ export const recordingsApi = {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await retryFetch(`${API_BASE_URL}/add_recording`, {
+    const response = await fetch(`${API_BASE_URL}/add_recording`, {
       method: "POST",
       headers,
       body: data,
@@ -772,7 +750,7 @@ export const recordingsApi = {
     email: string,
     password: string
   ): Promise<LoginResponse> => {
-    const response = await retryFetch(`${API_BASE_URL}/login`, {
+    const response = await fetch(`${API_BASE_URL}/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -814,7 +792,7 @@ export const recordingsApi = {
     email: string,
     password: string
   ): Promise<LoginResponse> => {
-    const response = await retryFetch(`${API_BASE_URL}/login_web`, {
+    const response = await fetch(`${API_BASE_URL}/login_web`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -851,7 +829,7 @@ export const recordingsApi = {
 
   // Fetch current user using /me
   getCurrentUser: async (): Promise<CurrentUser> => {
-    const response = await retryFetch(`${API_BASE_URL}/me`, {
+    const response = await fetch(`${API_BASE_URL}/me`, {
       method: "GET",
       headers: getAuthHeaders(),
       cache: "no-store",
@@ -877,7 +855,7 @@ export const recordingsApi = {
         return;
       }
 
-      const response = await retryFetch(`${API_BASE_URL}/logout`, {
+      const response = await fetch(`${API_BASE_URL}/logout`, {
         method: "POST",
         headers: getAuthHeaders(),
       });
@@ -908,6 +886,8 @@ export const recordingsApi = {
     }
   },
 
+
+
   generateSubscription: async (
     subscriptionData: SubscriptionData
   ): Promise<void> => {
@@ -928,7 +908,7 @@ export const recordingsApi = {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await retryFetch(`${API_BASE_URL}/generate_subscription`, {
+    const response = await fetch(`${API_BASE_URL}/generate_subscription`, {
       method: "POST",
       headers,
       body: formData,

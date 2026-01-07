@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Layout from "../../components/Layout";
 import SearchBar from "../../components/SearchBar";
 import {
   recordingsApi,
@@ -98,7 +97,7 @@ export default function Search() {
   }, [recordings, term]);
 
   return (
-    <Layout>
+    <>
       <h1 className="text-3xl font-bold mb-6">Search</h1>
       <SearchBar onSearch={setTerm} defaultValue={term} />
 
@@ -114,6 +113,6 @@ export default function Search() {
           />
         </div>
       )}
-    </Layout>
+    </>
   );
 }

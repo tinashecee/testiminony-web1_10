@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 const TARGET_BASE =
-  process.env.AUDIT_BASE_URL || "https://testimonyapi.soxfort.com";
+  process.env.AUDIT_BASE_URL || "http://41.220.20.218:5000";
 
 function buildTargetUrl(path: string[], req: NextRequest): string {
   const joinedPath = path?.length ? `/${path.join("/")}` : "";

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -36,6 +37,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { AuditLog } from "@/services/auditService";
 import { recordingsApi, Recording } from "@/services/api";
@@ -86,11 +88,6 @@ export function TranscriptReport({
   const [courtFilter, setCourtFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [qualityFilter, setQualityFilter] = useState<string>("all");
-  const [recordings, setRecordings] = useState<Recording[]>([]);
-  const [recordingsLoading, setRecordingsLoading] = useState(false);
-  const [transcriptionAssignments, setTranscriptionAssignments] = useState<
-    any[]
-  >([]);
   const [sortBy, setSortBy] = useState<keyof RecordingTranscriptData>("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [selectedRecording, setSelectedRecording] =
@@ -99,123 +96,123 @@ export function TranscriptReport({
   const [activeScope, setActiveScope] = useState<string>("");
   const [pageSize, setPageSize] = useState<number>(50);
   const [offset, setOffset] = useState<number>(0);
-  const [total, setTotal] = useState<number>(0);
 
-  // Load recordings data (role-based, server-paginated)
-  useEffect(() => {
-    const loadRecordings = async () => {
-      setRecordingsLoading(true);
-      try {
-        const role = user?.role;
-        const params: any = {
-          limit: pageSize,
-          offset,
-          q: searchTerm || undefined,
-          court: courtFilter !== "all" ? courtFilter : undefined,
-          sort_by: "date_stamp",
-          sort_dir: "desc",
-        };
-        if (
-          ["station_magistrate", "resident_magistrate"].includes(role || "") &&
-          (user as any)?.district
-        ) {
-          params.district = (user as any).district as string;
-        } else if (
-          role === "provincial_magistrate" &&
-          (user as any)?.province
-        ) {
-          params.province = (user as any).province as string;
-        } else if (role === "regional_magistrate" && (user as any)?.region) {
-          params.region = (user as any).region as string;
-        }
+  // TanStack Query for recordings (role-based, server-paginated)
+  const {
+    data: recordingsResult,
+    isLoading: recordingsLoading,
+    refetch: refetchRecordings,
+    isFetching: isRecordingsRefetching,
+  } = useQuery({
+    queryKey: [
+      "transcript-recordings",
+      user?.role,
+      (user as any)?.district,
+      (user as any)?.province,
+      (user as any)?.region,
+      pageSize,
+      offset,
+      searchTerm,
+      courtFilter,
+    ],
+    queryFn: async () => {
+      const role = user?.role;
+      const params: any = {
+        limit: pageSize,
+        offset,
+        q: searchTerm || undefined,
+        court: courtFilter !== "all" ? courtFilter : undefined,
+        sort_by: "date_stamp",
+        sort_dir: "desc",
+      };
+      if (
+        ["station_magistrate", "resident_magistrate"].includes(role || "") &&
+        (user as any)?.district
+      ) {
+        params.district = (user as any).district as string;
+      } else if (
+        role === "provincial_magistrate" &&
+        (user as any)?.province
+      ) {
+        params.province = (user as any).province as string;
+      } else if (role === "regional_magistrate" && (user as any)?.region) {
+        params.region = (user as any).region as string;
+      }
 
-        const isAll = pageSize >= 100000;
-        if (isAll) {
-          const pageLimit = 100;
-          // First request to determine total
-          const firstPage = await recordingsApi.getRecordingsPaginated({
+      const isAll = pageSize >= 100000;
+      if (isAll) {
+        const pageLimit = 100;
+        const firstPage = await recordingsApi.getRecordingsPaginated({
+          ...params,
+          limit: pageLimit,
+          offset: 0,
+        });
+        const finalTotal = Number(firstPage.total) || firstPage.items.length;
+        let accumulated: Recording[] = [...firstPage.items];
+
+        const maxIterations = Math.ceil(finalTotal / pageLimit) + 2;
+        let iterations = 0;
+
+        for (
+          let currentOffset = firstPage.items.length;
+          currentOffset < finalTotal && iterations < maxIterations;
+          currentOffset += pageLimit
+        ) {
+          const page = await recordingsApi.getRecordingsPaginated({
             ...params,
             limit: pageLimit,
-            offset: 0,
+            offset: currentOffset,
           });
-          const finalTotal = Number(firstPage.total) || firstPage.items.length;
-          let accumulated: Recording[] = [...firstPage.items];
-
-          // Safety cap to avoid runaway loops if API misreports totals
-          const maxIterations = Math.ceil(finalTotal / pageLimit) + 2;
-          let iterations = 0;
-
-          for (
-            let currentOffset = firstPage.items.length;
-            currentOffset < finalTotal && iterations < maxIterations;
-            currentOffset += pageLimit
-          ) {
-            const page = await recordingsApi.getRecordingsPaginated({
-              ...params,
-              limit: pageLimit,
-              offset: currentOffset,
-            });
-            if (!page.items || page.items.length === 0) break;
-            accumulated = accumulated.concat(page.items);
-            iterations += 1;
-          }
-
-          setRecordings(accumulated);
-          setTotal(finalTotal || accumulated.length);
-        } else {
-          const res = await recordingsApi.getRecordingsPaginated(params);
-          setRecordings(res.items);
-          setTotal(res.total);
+          if (!page.items || page.items.length === 0) break;
+          accumulated = accumulated.concat(page.items);
+          iterations += 1;
         }
+
+        // Determine scope
         let scope = "";
         if (params.district) scope = `District: ${params.district}`;
         else if (params.province) scope = `Province: ${params.province}`;
         else if (params.region) scope = `Region: ${params.region}`;
         else scope = "All Recordings";
         setActiveScope(scope);
-      } catch (error) {
-        // Use sample data as fallback
-        const sampleRecordings = generateSampleRecordings();
-        setRecordings(sampleRecordings);
-      } finally {
-        setRecordingsLoading(false);
+
+        return { items: accumulated, total: finalTotal };
+      } else {
+        const res = await recordingsApi.getRecordingsPaginated(params);
+
+        // Determine scope
+        let scope = "";
+        if (params.district) scope = `District: ${params.district}`;
+        else if (params.province) scope = `Province: ${params.province}`;
+        else if (params.region) scope = `Region: ${params.region}`;
+        else scope = "All Recordings";
+        setActiveScope(scope);
+
+        return { items: res.items, total: res.total };
       }
-    };
+    },
+    enabled: !!user,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
 
-    const loadTranscriptionAssignments = async () => {
-      try {
-        console.log("Loading transcription assignments...");
-        const response = await fetch("/api/backend/transcription_users", {
-          method: "GET",
-        });
-
-        if (response.ok) {
-          const assignments = await response.json();
-          console.log("Transcription assignments loaded:", assignments);
-          setTranscriptionAssignments(assignments);
-        } else {
-          console.warn(
-            "Failed to load transcription assignments:",
-            response.status
-          );
-        }
-      } catch (error) {
-        console.warn("Error loading transcription assignments:", error);
+  // TanStack Query for transcription assignments
+  const { data: transcriptionAssignments = [] } = useQuery({
+    queryKey: ["transcription-assignments"],
+    queryFn: async () => {
+      const response = await fetch("/api/backend/transcription_users", {
+        method: "GET",
+      });
+      if (response.ok) {
+        return await response.json();
       }
-    };
+      return [];
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-    loadRecordings();
-    loadTranscriptionAssignments();
-  }, [
-    user?.role,
-    (user as any)?.district,
-    (user as any)?.province,
-    (user as any)?.region,
-    pageSize,
-    offset,
-    searchTerm,
-    courtFilter,
-  ]);
+  // Derived state from query results
+  const recordings = recordingsResult?.items || [];
+  const total = recordingsResult?.total || 0;
 
   // Process transcript data
   const transcriptData = useMemo(() => {
@@ -243,11 +240,19 @@ export function TranscriptReport({
           | "none";
       }
 
-      // Find assigned user from transcription assignments
-      const assignment = transcriptionAssignments.find(
-        (assignment) => assignment.case_id === recording.id
-      );
-      const assignedTo = assignment ? assignment.user_name : "Unassigned";
+      // Get assigned user - first check recording.assigned_to, then transcription assignments
+      let assignedTo = "Unassigned";
+      if (recording.assigned_to && recording.assigned_to.trim()) {
+        assignedTo = recording.assigned_to;
+      } else {
+        // Fall back to transcription assignments lookup
+        const assignment = transcriptionAssignments.find(
+          (a: any) => a.case_id === recording.id || a.recording_id === recording.id
+        );
+        if (assignment) {
+          assignedTo = assignment.user_name || assignment.assigned_to || "Unassigned";
+        }
+      }
 
       return {
         id: recording.id,
@@ -289,9 +294,9 @@ export function TranscriptReport({
     const averageTranscriptLength =
       transcriptsWithContent.length > 0
         ? transcriptsWithContent.reduce(
-            (sum, r) => sum + r.transcriptLength,
-            0
-          ) / transcriptsWithContent.length
+          (sum, r) => sum + r.transcriptLength,
+          0
+        ) / transcriptsWithContent.length
         : 0;
     const averageWordsPerTranscript =
       transcriptsWithContent.length > 0
@@ -331,8 +336,8 @@ export function TranscriptReport({
       (typeof value === "string"
         ? value
         : value == null
-        ? ""
-        : String(value)
+          ? ""
+          : String(value)
       ).toLowerCase();
 
     const query = normalize(searchTerm);
@@ -454,9 +459,8 @@ export function TranscriptReport({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `transcript-report-${
-        new Date().toISOString().split("T")[0]
-      }.csv`;
+      a.download = `transcript-report-${new Date().toISOString().split("T")[0]
+        }.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -488,86 +492,13 @@ export function TranscriptReport({
   };
 
   const handleSaveTranscript = async () => {
-    // Reload recordings data after transcript is saved
+    // Reload recordings data after transcript is saved using TanStack Query
     try {
-      const role = user?.role;
-      const params: any = {
-        limit: pageSize,
-        offset,
-        q: searchTerm || undefined,
-        court: courtFilter !== "all" ? courtFilter : undefined,
-        sort_by: "date_stamp",
-        sort_dir: "desc",
-      };
-      if (
-        ["station_magistrate", "resident_magistrate"].includes(role || "") &&
-        (user as any)?.district
-      ) {
-        params.district = (user as any).district as string;
-      } else if (role === "provincial_magistrate" && (user as any)?.province) {
-        params.province = (user as any).province as string;
-      } else if (role === "regional_magistrate" && (user as any)?.region) {
-        params.region = (user as any).region as string;
-      }
-
-      const res = await recordingsApi.getRecordingsPaginated(params);
-      setRecordings(res.items);
-      setTotal(res.total);
-
-      // Update the selected recording with the latest data
-      if (selectedRecording) {
-        const updatedRecording = res.items.find(
-          (r: Recording) => r.id === selectedRecording.id
-        );
-        if (updatedRecording) {
-          const transcript = updatedRecording.transcript || "";
-          const wordCount = transcript.trim()
-            ? transcript.trim().split(/\s+/).length
-            : 0;
-          const transcriptLength = transcript.length;
-          const hasTranscript = transcript.trim().length > 0;
-
-          let transcriptStatus:
-            | "completed"
-            | "in_progress"
-            | "pending"
-            | "review"
-            | "none" = "pending";
-          if (updatedRecording.transcript_status) {
-            transcriptStatus = updatedRecording.transcript_status as
-              | "completed"
-              | "in_progress"
-              | "pending"
-              | "review"
-              | "none";
-          }
-
-          const assignment = transcriptionAssignments.find(
-            (assignment) => assignment.case_id === updatedRecording.id
-          );
-          const assignedTo = assignment ? assignment.user_name : "Unassigned";
-
-          setSelectedRecording({
-            id: updatedRecording.id,
-            caseNumber: updatedRecording.case_number,
-            assignedTo,
-            title: updatedRecording.title,
-            date: updatedRecording.date_stamp,
-            court: updatedRecording.court,
-            transcript,
-            transcriptLength,
-            wordCount,
-            hasTranscript,
-            transcriptStatus,
-            lastModified: updatedRecording.date_stamp,
-          });
-        }
-      }
+      await refetchRecordings();
+      toast.success("Transcript saved and data refreshed");
     } catch (error) {
       console.error("Failed to reload recordings:", error);
-      // Use sample data as fallback
-      const sampleRecordings = generateSampleRecordings();
-      setRecordings(sampleRecordings);
+      toast.error("Failed to refresh data");
     }
   };
 
@@ -648,77 +579,77 @@ export function TranscriptReport({
               courtFilter !== "all" ||
               statusFilter !== "all" ||
               qualityFilter !== "all") && (
-              <div className="flex flex-wrap gap-2">
-                <span className="text-sm text-muted-foreground">
-                  Active filters:
-                </span>
-                {searchTerm && (
-                  <Badge
-                    variant="secondary"
-                    className="flex items-center gap-1">
-                    Search: "{searchTerm}"
-                    <button
-                      onClick={() => setSearchTerm("")}
-                      className="ml-1 hover:text-destructive">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                {courtFilter !== "all" && (
-                  <Badge
-                    variant="secondary"
-                    className="flex items-center gap-1">
-                    Court: {courtFilter}
-                    <button
-                      onClick={() => setCourtFilter("all")}
-                      className="ml-1 hover:text-destructive">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                {statusFilter !== "all" && (
-                  <Badge
-                    variant="secondary"
-                    className="flex items-center gap-1">
-                    Status:{" "}
-                    {statusFilter === "with"
-                      ? "With Transcripts"
-                      : "Without Transcripts"}
-                    <button
-                      onClick={() => setStatusFilter("all")}
-                      className="ml-1 hover:text-destructive">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                {qualityFilter !== "all" && (
-                  <Badge
-                    variant="secondary"
-                    className="flex items-center gap-1">
-                    Progress:{" "}
-                    {qualityFilter.charAt(0).toUpperCase() +
-                      qualityFilter.slice(1).replace("_", " ")}
-                    <button
-                      onClick={() => setQualityFilter("all")}
-                      className="ml-1 hover:text-destructive">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearchTerm("");
-                    setCourtFilter("all");
-                    setStatusFilter("all");
-                    setQualityFilter("all");
-                  }}
-                  className="text-xs">
-                  Clear All
-                </Button>
-              </div>
-            )}
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    Active filters:
+                  </span>
+                  {searchTerm && (
+                    <Badge
+                      variant="secondary"
+                      className="flex items-center gap-1">
+                      Search: "{searchTerm}"
+                      <button
+                        onClick={() => setSearchTerm("")}
+                        className="ml-1 hover:text-destructive">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  {courtFilter !== "all" && (
+                    <Badge
+                      variant="secondary"
+                      className="flex items-center gap-1">
+                      Court: {courtFilter}
+                      <button
+                        onClick={() => setCourtFilter("all")}
+                        className="ml-1 hover:text-destructive">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  {statusFilter !== "all" && (
+                    <Badge
+                      variant="secondary"
+                      className="flex items-center gap-1">
+                      Status:{" "}
+                      {statusFilter === "with"
+                        ? "With Transcripts"
+                        : "Without Transcripts"}
+                      <button
+                        onClick={() => setStatusFilter("all")}
+                        className="ml-1 hover:text-destructive">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  {qualityFilter !== "all" && (
+                    <Badge
+                      variant="secondary"
+                      className="flex items-center gap-1">
+                      Progress:{" "}
+                      {qualityFilter.charAt(0).toUpperCase() +
+                        qualityFilter.slice(1).replace("_", " ")}
+                      <button
+                        onClick={() => setQualityFilter("all")}
+                        className="ml-1 hover:text-destructive">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSearchTerm("");
+                      setCourtFilter("all");
+                      setStatusFilter("all");
+                      setQualityFilter("all");
+                    }}
+                    className="text-xs">
+                    Clear All
+                  </Button>
+                </div>
+              )}
 
             {/* Pagination Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
@@ -796,31 +727,30 @@ export function TranscriptReport({
         courtFilter !== "all" ||
         statusFilter !== "all" ||
         qualityFilter !== "all") && (
-        <Card className="border-blue-200 bg-blue-50/50">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <Search className="w-5 h-5 text-blue-600" />
-              <div>
-                <h4 className="font-semibold text-blue-900">
-                  Filtered Results
-                </h4>
-                <p className="text-sm text-blue-700">
-                  Showing {filteredAndSortedData.length} of{" "}
-                  {transcriptData.length} recordings
-                  {searchTerm && ` matching "${searchTerm}"`}
-                  {courtFilter !== "all" && ` in ${courtFilter}`}
-                  {statusFilter !== "all" &&
-                    ` with ${
-                      statusFilter === "with" ? "transcripts" : "no transcripts"
-                    }`}
-                  {qualityFilter !== "all" &&
-                    ` with ${qualityFilter.replace("_", " ")} progress`}
-                </p>
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <Search className="w-5 h-5 text-blue-600" />
+                <div>
+                  <h4 className="font-semibold text-blue-900">
+                    Filtered Results
+                  </h4>
+                  <p className="text-sm text-blue-700">
+                    Showing {filteredAndSortedData.length} of{" "}
+                    {transcriptData.length} recordings
+                    {searchTerm && ` matching "${searchTerm}"`}
+                    {courtFilter !== "all" && ` in ${courtFilter}`}
+                    {statusFilter !== "all" &&
+                      ` with ${statusFilter === "with" ? "transcripts" : "no transcripts"
+                      }`}
+                    {qualityFilter !== "all" &&
+                      ` with ${qualityFilter.replace("_", " ")} progress`}
+                  </p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
 
       {/* Transcript Metrics Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

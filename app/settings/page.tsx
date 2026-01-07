@@ -2,11 +2,10 @@
 
 import React from "react"
 import { useState } from "react"
-import Layout from "../../components/Layout"
-import { 
-  Users, 
-  Key, 
-  Building2, 
+import {
+  Users,
+  Key,
+  Building2,
   ChevronRight,
   Activity,
   BarChart3
@@ -71,43 +70,41 @@ export default function SettingsPage() {
   }
 
   return (
-    <Layout>
-      <RoleGuard allowedRoles={['admin', 'super_admin']}>
-        <div className="container mx-auto p-6">
-          <h1 className="text-3xl font-bold mb-8">Settings</h1>
-          
-          <div className="grid grid-cols-1 gap-4">
-            {settingsSections.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => handleSectionClick(section.id)}
-                className={cn(
-                  "flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors",
-                  selectedSection === section.id && "ring-2 ring-ring"
-                )}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-2 rounded-md bg-primary/10">
-                    <section.icon className="w-6 h-6 text-primary" />
-                  </div>
-                  <div className="text-left">
-                    <h3 className="font-semibold text-foreground">{section.name}</h3>
-                    <p className="text-sm text-muted-foreground">{section.description}</p>
-                  </div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </button>
-            ))}
-          </div>
+    <RoleGuard allowedRoles={['admin', 'super_admin']}>
+      <div className="container mx-auto p-6">
+        <h1 className="text-3xl font-bold mb-8">Settings</h1>
 
-          <SettingsPanel 
-            section={selectedSection}
-            isOpen={isPanelOpen}
-            onClose={handlePanelClose}
-          />
+        <div className="grid grid-cols-1 gap-4">
+          {settingsSections.map((section) => (
+            <button
+              key={section.id}
+              onClick={() => handleSectionClick(section.id)}
+              className={cn(
+                "flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors",
+                selectedSection === section.id && "ring-2 ring-ring"
+              )}
+            >
+              <div className="flex items-center gap-4">
+                <div className="p-2 rounded-md bg-primary/10">
+                  <section.icon className="w-6 h-6 text-primary" />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-semibold text-foreground">{section.name}</h3>
+                  <p className="text-sm text-muted-foreground">{section.description}</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </button>
+          ))}
         </div>
-      </RoleGuard>
-    </Layout>
+
+        <SettingsPanel
+          section={selectedSection}
+          isOpen={isPanelOpen}
+          onClose={handlePanelClose}
+        />
+      </div>
+    </RoleGuard>
   )
 }
 

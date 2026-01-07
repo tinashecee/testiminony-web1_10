@@ -14,20 +14,34 @@ interface RoleGuardProps {
   showFallback?: boolean;
 }
 
-export function RoleGuard({ 
-  children, 
-  allowedRoles, 
+export function RoleGuard({
+  children,
+  allowedRoles,
   fallback,
-  showFallback = true 
+  showFallback = true
 }: RoleGuardProps) {
   const { user, loading, hasRole, isAuthenticated } = useAuth();
   const router = useRouter();
 
-  // Show loading state
+  // Show loading state with a skeleton that matches page structure
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[200px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="container mx-auto p-6 animate-pulse">
+        <div className="h-9 w-48 bg-gray-200 rounded mb-8" />
+        <div className="grid grid-cols-1 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-white">
+              <div className="flex items-center gap-4">
+                <div className="p-2 rounded-md bg-gray-100 w-10 h-10" />
+                <div className="space-y-2">
+                  <div className="h-5 w-32 bg-gray-200 rounded" />
+                  <div className="h-4 w-64 bg-gray-100 rounded" />
+                </div>
+              </div>
+              <div className="w-5 h-5 bg-gray-200 rounded" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -77,7 +91,7 @@ export function RoleGuard({
           <div className="text-sm text-muted-foreground">
             <p>Your role: <span className="font-medium capitalize">{user?.role?.replace('_', ' ')}</span></p>
             <p>Required role(s): <span className="font-medium">
-              {Array.isArray(allowedRoles) 
+              {Array.isArray(allowedRoles)
                 ? allowedRoles.map(role => role.replace('_', ' ')).join(', ')
                 : allowedRoles.replace('_', ' ')
               }

@@ -216,18 +216,17 @@ export default function Layout({ children }: LayoutProps) {
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`flex items-center px-6 py-3 text-white hover:bg-white/10 transition-all duration-200 ease-in-out hover:translate-x-1 group ${
-                    pathname === item.href
-                      ? "bg-white/20 border-r-4 border-white"
-                      : ""
-                  }`}
+                  className={`flex items-center px-6 py-5 text-white hover:bg-white/10 transition-all duration-200 ease-in-out hover:translate-x-1 group uppercase tracking-widest font-light text-sm ${pathname === item.href
+                    ? "bg-white/20 border-r-4 border-white font-normal"
+                    : "opacity-80 hover:opacity-100"
+                    }`}
                   style={{
                     animationDelay: `${index * 100}ms`,
                     animation: loading
                       ? "none"
                       : "slideInLeft 0.3s ease-out forwards",
                   }}>
-                  <item.icon className="w-5 h-5 mr-3 transition-transform duration-200 group-hover:scale-110" />
+                  <item.icon className="w-5 h-5 mr-4 transition-transform duration-200 group-hover:scale-110" />
                   <span className="transition-all duration-200">
                     {item.name}
                   </span>
@@ -290,16 +289,16 @@ export default function Layout({ children }: LayoutProps) {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button className="flex items-center space-x-3 opacity-0 animate-[fadeInUp_0.5s_ease-out_forwards] focus:outline-none">
-                        <div className="flex items-center justify-center w-8 h-8 bg-[#1B4D3E] text-white rounded-full transition-all duration-300 hover:scale-110 hover:shadow-lg cursor-pointer">
-                          <User className="w-4 h-4 transition-transform duration-200" />
-                        </div>
                         <div className="text-right transition-all duration-200">
                           <div className="text-sm font-medium text-gray-900 transition-colors duration-200 hover:text-[#1B4D3E]">
                             {user.name}
                           </div>
                           <div className="text-xs text-gray-500 transition-colors duration-200">
-                            {getRoleDisplayName(user.role)} • {user.email}
+                            {getRoleDisplayName(user.role)}
                           </div>
+                        </div>
+                        <div className="flex items-center justify-center w-8 h-8 bg-[#1B4D3E] text-white rounded-full transition-all duration-300 hover:scale-110 hover:shadow-lg cursor-pointer">
+                          <User className="w-4 h-4 transition-transform duration-200" />
                         </div>
                       </button>
                     </DropdownMenuTrigger>

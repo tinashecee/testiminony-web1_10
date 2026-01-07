@@ -1,35 +1,32 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useMemo, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   FileText,
   Users,
   Building2,
-  HardDrive,
-  Clock,
   AlertTriangle,
-  BarChart3,
   Calendar,
   Search,
   ChevronLeft,
   ChevronRight,
   Plus,
   RefreshCw,
+  TrendingDown,
+  TrendingUp,
+  Activity,
 } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
 import { cn, formatDuration, getCourtNameForRecording } from "@/lib/utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -47,6 +44,9 @@ import {
   type User,
 } from "@/services/api";
 import dynamic from "next/dynamic";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { showUploadProgress } from "@/components/ui/upload-progress";
+
 const AddRecordingModal = dynamic(
   () =>
     import("./recording/AddRecordingModal").then((m) => m.AddRecordingModal),
@@ -55,493 +55,517 @@ const AddRecordingModal = dynamic(
     loading: () => null,
   }
 );
-import { showUploadProgress } from "@/components/ui/upload-progress";
 
 export default function Dashboard() {
   const router = useRouter();
   const { user } = useAuth();
-  const [recordings, setRecordings] = useState<Recording[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const queryClient = useQueryClient();
+
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [retryAttempt, setRetryAttempt] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [cacheStatus, setCacheStatus] = useState<
-    "cached" | "fresh" | "unknown"
-  >("unknown");
-
   const [isAddRecordingOpen, setIsAddRecordingOpen] = useState(false);
-  const [courts, setCourts] = useState<Court[]>([]);
-  const [courtrooms, setCourtrooms] = useState<Courtroom[]>([]);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [currentFileName, setCurrentFileName] = useState<string>("");
 
-  // Get current month and year
-  const getCurrentMonthYear = () => {
-    const now = new Date();
-    const monthNames = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-    ];
-    return `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
-  };
+  // Debounce search query for better UX
+  useEffect(() => {
+    if (searchQuery !== debouncedSearchQuery) {
+      setIsSearching(true);
+    }
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setIsSearching(false);
+      setCurrentPage(1); // Reset to first page on new search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  // Calculate dynamic stats based on real data
-  const stats = useMemo(
-    () => [
-      {
-        title: "Total Recordings",
-        value: recordings.length.toLocaleString(),
-        icon: FileText,
-        description: "Audio recordings across all courts",
-        change: `${recordings.length} recordings total`,
-      },
-      {
-        title: "Active Users",
-        value: users.length.toString(),
-        icon: Users,
-        description: "Currently registered users",
-        change: `${users.length} users registered`,
-      },
-      {
-        title: "Active Courts",
-        value: courts.length.toString(),
-        icon: Building2,
-        description: "Connected courtrooms",
-        change: `${courts.length} courts active`,
-      },
+  // --- Queries ---
+
+  // 1. Recordings (Main List - for when there's no search)
+  const {
+    data: recordingsData,
+    isLoading: isRecordingsLoading,
+    isError: isRecordingsError,
+    error: recordingsError,
+    refetch: refetchRecordings,
+    isRefetching: isRecordingsRefetching,
+  } = useQuery({
+    queryKey: [
+      "recordings",
+      user?.role,
+      (user as any)?.district,
+      (user as any)?.province,
+      (user as any)?.region,
     ],
-    [recordings.length, users.length, courts.length]
-  );
-
-  // Fetch recordings (role-based) with error handling and cache awareness
-  const fetchRecordings = async (forceRefresh = false) => {
-    try {
-      if (forceRefresh) {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-      setError(null);
-
+    queryFn: async () => {
       const role = user?.role;
-      let list: Recording[] = [];
       if (
         ["station_magistrate", "resident_magistrate"].includes(role || "") &&
         (user as any)?.district
       ) {
-        list = await recordingsApi.getRecordingsByDistrict(
+        return await recordingsApi.getRecordingsByDistrict(
           (user as any).district as string
         );
       } else if (role === "provincial_magistrate" && (user as any)?.province) {
-        list = await recordingsApi.getRecordingsByProvince(
+        return await recordingsApi.getRecordingsByProvince(
           (user as any).province as string
         );
       } else if (role === "regional_magistrate" && (user as any)?.region) {
-        list = await recordingsApi.getRecordingsByRegion(
+        return await recordingsApi.getRecordingsByRegion(
           (user as any).region as string
         );
       } else {
         const res = await recordingsApi.getRecordingsPaginated({
-          limit: 20,
+          limit: 100,
           offset: 0,
           sort_by: "date_stamp",
           sort_dir: "desc",
         });
-        list = res.items;
+        return res.items;
       }
+    },
+    enabled: !!user && !debouncedSearchQuery, // Only fetch when no search query
+  });
 
-      setRecordings(list);
-      setRetryAttempt(0); // Reset retry count on success
-      setCacheStatus(forceRefresh ? "fresh" : "cached");
-    } catch (error) {
-      console.error("Error fetching recordings:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to fetch recordings";
-      setError(errorMessage);
-      setRetryAttempt((prev) => prev + 1);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+  // 2. Server-side Search Query (searches entire database)
+  const {
+    data: searchResultsData,
+    isLoading: isSearchLoading,
+    isError: isSearchError,
+    error: searchError,
+  } = useQuery({
+    queryKey: ["recordings-search", debouncedSearchQuery, currentPage, pageSize],
+    queryFn: async () => {
+      const res = await recordingsApi.getRecordingsPaginated({
+        q: debouncedSearchQuery,
+        limit: pageSize,
+        offset: (currentPage - 1) * pageSize,
+        sort_by: "date_stamp",
+        sort_dir: "desc",
+      });
+      return res;
+    },
+    enabled: !!user && !!debouncedSearchQuery, // Only fetch when there's a search query
+  });
+
+  // 3. Stats: Total Recordings (Count only)
+
+  const { data: totalRecordingsCount } = useQuery({
+    queryKey: ["stats", "totalRecordings"],
+    queryFn: async () => {
+      const res = await recordingsApi.getRecordingsPaginated({ limit: 1 });
+      return res.total;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // 3. Stats: Active Users
+  const { data: usersList } = useQuery({
+    queryKey: ["stats", "users"],
+    queryFn: () => recordingsApi.getUsers(),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // 4. Stats: Active Courts
+  const { data: courtsList } = useQuery({
+    queryKey: ["stats", "courts"],
+    queryFn: () => recordingsApi.getCourts(),
+    staleTime: 15 * 60 * 1000,
+  });
+
+  // 5. Courtrooms (for mapping names)
+  const { data: courtroomsList } = useQuery({
+    queryKey: ["courtrooms"],
+    queryFn: () => recordingsApi.getCourtrooms(),
+    staleTime: 15 * 60 * 1000,
+  });
+
+  // --- Derived State ---
+
+  // Use search results when searching, otherwise use regular recordings
+  const isActiveSearch = !!debouncedSearchQuery;
+  const recordings = useMemo(() => {
+    if (isActiveSearch && searchResultsData) {
+      return searchResultsData.items || [];
     }
-  };
+    return recordingsData || [];
+  }, [isActiveSearch, searchResultsData, recordingsData]);
 
-  // Force refresh recordings (bypass cache)
-  const refreshRecordings = async () => {
-    await fetchRecordings(true);
-  };
+  const courts = useMemo(() => courtsList || [], [courtsList]);
+  const courtrooms = useMemo(() => courtroomsList || [], [courtroomsList]);
 
-  // Handle recording click with cache invalidation
+  // When searching server-side, we don't need to filter locally
+  const paginatedRecordings = useMemo(() => {
+    if (isActiveSearch) {
+      // Server already handles pagination and filtering
+      return recordings;
+    }
+    // Local pagination for non-search view
+    const startIndex = (currentPage - 1) * pageSize;
+    return recordings.slice(startIndex, startIndex + pageSize);
+  }, [isActiveSearch, recordings, currentPage, pageSize]);
+
+  // Total count and pages - from server when searching
+  const totalCount = isActiveSearch
+    ? (searchResultsData?.total || 0)
+    : recordings.length;
+  const totalPages = Math.ceil(totalCount / pageSize);
+
+  // Combined loading states
+  const isLoading = isActiveSearch ? isSearchLoading : isRecordingsLoading;
+  const hasError = isActiveSearch ? isSearchError : isRecordingsError;
+  const errorObj = isActiveSearch ? searchError : recordingsError;
+
+  // Stats Card Data
+  const stats = [
+    {
+      title: "Total Recordings",
+      value: totalRecordingsCount?.toLocaleString() || "...",
+      icon: FileText,
+      description: "Audio recordings",
+      trend: "+12%",
+      trendUp: true,
+      color: "text-blue-600",
+      bg: "bg-blue-100",
+    },
+    {
+      title: "Active Users",
+      value: usersList?.length.toString() || "...",
+      icon: Users,
+      description: "Registered users",
+      trend: "+5%",
+      trendUp: true,
+      color: "text-purple-600",
+      bg: "bg-purple-100",
+    },
+    {
+      title: "Active Courts",
+      value: courtsList?.length.toString() || "...",
+      icon: Building2,
+      description: "Connected courts",
+      trend: "Stable",
+      trendUp: true,
+      color: "text-emerald-600",
+      bg: "bg-emerald-100",
+    },
+  ];
+
+  // --- Handlers ---
+
   const handleRecordingClick = (recordingId: number) => {
-    // Invalidate individual recording cache to ensure fresh data when returning
-    recordingsApi.invalidateRecordingsCache();
     router.push(`/recordings/${recordingId}`);
   };
 
-  useEffect(() => {
-    fetchRecordings();
-  }, [
-    user?.role,
-    (user as any)?.district,
-    (user as any)?.province,
-    (user as any)?.region,
-  ]);
-
-  // Fetch courts, courtrooms, and users (non-critical data)
-  useEffect(() => {
-    const scheduleIdleFetch = () => {
-      const run = async () => {
-        try {
-          const results = await Promise.allSettled([
-            recordingsApi.getCourts(),
-            recordingsApi.getCourtrooms(),
-            recordingsApi.getUsers(),
-          ]);
-
-          if (results[0].status === "fulfilled") setCourts(results[0].value);
-          if (results[1].status === "fulfilled")
-            setCourtrooms(results[1].value);
-          if (results[2].status === "fulfilled") setUsers(results[2].value);
-        } catch (error) {
-          console.error("Idle fetch error:", error);
-        }
-      };
-
-      // Prefer requestIdleCallback if available, else timeout
-      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-        (window as any).requestIdleCallback(run, { timeout: 3000 });
-      } else {
-        setTimeout(run, 1500);
-      }
-    };
-
-    scheduleIdleFetch();
-  }, []);
-
-  // Filter recordings based on search and sort by date
-  const filteredRecordings = useMemo(() => {
-    return recordings
-      .filter(
-        (recording) =>
-          recording.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          recording.case_number
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase()) ||
-          recording.judge_name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-      .sort((a, b) => {
-        // Sort by date_stamp in descending order (most recent first)
-        return (
-          new Date(b.date_stamp).getTime() - new Date(a.date_stamp).getTime()
-        );
-      });
-  }, [recordings, searchQuery]);
-
-  // Paginate recordings
-  const paginatedRecordings = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredRecordings.slice(startIndex, startIndex + pageSize);
-  }, [filteredRecordings, currentPage, pageSize]);
-
-  // Calculate total pages
-  const totalPages = Math.ceil(filteredRecordings.length / pageSize);
+  const getCurrentMonthYear = () => {
+    const now = new Date();
+    return now.toLocaleString("default", { month: "long", year: "numeric" });
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between animate-[fadeInDown_0.5s_ease-out]">
-        <h1 className="text-3xl font-bold transition-all duration-300 hover:text-[#1B4D3E]">
-          Dashboard
-        </h1>
-        <div className="flex items-center gap-4">
+    <div className="space-y-8 animate-in fade-in duration-500">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-[#1B4D3E]">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">
+            Overview of court recording activities
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white rounded-full text-sm font-medium text-muted-foreground shadow-sm border">
+            <Calendar className="h-4 w-4" />
+            {getCurrentMonthYear()}
+          </div>
           <Button
             onClick={() => setIsAddRecordingOpen(true)}
-            className="gap-2 transition-all duration-200 hover:scale-105 hover:shadow-lg group">
-            <Plus className="h-4 w-4 transition-transform duration-200 group-hover:rotate-90" />
-            <span className="transition-all duration-200">Add Recording</span>
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-2 transition-all duration-200 hover:scale-105 hover:shadow-md group">
-            <Calendar className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
-            <span className="transition-all duration-200">
-              {getCurrentMonthYear()}
-            </span>
+            className="rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 bg-[#1B4D3E] hover:bg-[#153e32]"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New Recording
           </Button>
         </div>
       </div>
 
-      {/* Error State */}
-      {error && (
-        <Alert
-          variant="destructive"
-          className="animate-[fadeInDown_0.3s_ease-out]">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Connection Error</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>
-              {error}
-              {retryAttempt > 0 && (
-                <span className="text-xs block mt-1">
-                  Retry attempt #{retryAttempt}
-                </span>
-              )}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchRecordings}
-              disabled={isLoading}
-              className="ml-4 gap-2">
-              <RefreshCw
-                className={cn("h-4 w-4", isLoading && "animate-spin")}
-              />
-              {isLoading ? "Retrying..." : "Retry"}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* Stats Cards */}
+      <div className="grid gap-6 md:grid-cols-3">
         {stats.map((stat, index) => (
           <Card
             key={stat.title}
-            className="transition-all duration-300 hover:shadow-lg hover:scale-105 hover:-translate-y-1 cursor-pointer group"
-            style={{
-              animationDelay: `${index * 150}ms`,
-              animation: "fadeInUp 0.6s ease-out forwards",
-            }}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium transition-colors duration-200 group-hover:text-[#1B4D3E]">
+            className="border-none shadow-md hover:shadow-lg transition-all duration-300 group"
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
                 {stat.title}
               </CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground transition-all duration-300 group-hover:text-[#1B4D3E] group-hover:scale-110" />
+              <div className={`p-2 rounded-full ${stat.bg}`}>
+                <stat.icon className={`h-4 w-4 ${stat.color}`} />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold transition-all duration-300 group-hover:text-[#1B4D3E]">
+              <div className="text-3xl font-bold text-gray-900">
                 {stat.value}
               </div>
-              <p className="text-xs text-muted-foreground mt-1 transition-colors duration-200">
-                {stat.description}
-              </p>
-              <p className="text-xs text-primary mt-2 transition-all duration-200 group-hover:font-medium">
-                {stat.change}
-              </p>
+              <div className="flex items-center mt-2 text-xs">
+                {stat.trendUp ? (
+                  <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 text-red-500 mr-1" />
+                )}
+                <span
+                  className={
+                    stat.trendUp ? "text-green-600" : "text-red-600"
+                  }
+                >
+                  {stat.trend}
+                </span>
+                <span className="text-muted-foreground ml-2">
+                  {stat.description}
+                </span>
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-1">
-        {/* Recent Recordings */}
-        <Card className="col-span-full transition-all duration-300 hover:shadow-lg animate-[fadeInUp_0.7s_ease-out]">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CardTitle className="text-lg transition-colors duration-200 hover:text-[#1B4D3E]">
-                  Recent Recordings
-                </CardTitle>
-                {cacheStatus === "cached" && (
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>Cached</span>
-                  </div>
+
+      {/* Recent Recordings Section */}
+      <Card className="border-none shadow-md">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl font-semibold text-[#1B4D3E]">
+                Recent Recordings
+              </CardTitle>
+              <CardDescription>
+                Manage and view latest court summaries
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full hover:bg-gray-100"
+                onClick={() => refetchRecordings()}
+                disabled={isRecordingsRefetching}
+              >
+                <RefreshCw
+                  className={cn(
+                    "h-4 w-4 text-muted-foreground",
+                    isRecordingsRefetching && "animate-spin"
+                  )}
+                />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Search & Filter Bar */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
+            <div className="relative flex-1">
+              {isSearching ? (
+                <RefreshCw className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#1B4D3E] animate-spin" />
+              ) : (
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              )}
+              <Input
+                placeholder="Search case number, title, court, date, status..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 bg-white border-gray-200 focus:border-[#1B4D3E] focus:ring-[#1B4D3E] rounded-lg"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <Select
+              value={pageSize.toString()}
+              onValueChange={(v) => {
+                setPageSize(Number(v));
+                setCurrentPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[110px] bg-white rounded-lg">
+                <SelectValue placeholder="Rows" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5 rows</SelectItem>
+                <SelectItem value="10">10 rows</SelectItem>
+                <SelectItem value="20">20 rows</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Error Alert */}
+          {hasError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>
+                {(errorObj as Error)?.message ||
+                  "Failed to load recordings"}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Table */}
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#1B4D3E] text-white">
+                  <th className="text-left py-3 px-4 font-medium">Case Number</th>
+                  <th className="text-left py-3 px-4 font-medium">Title</th>
+                  <th className="text-left py-3 px-4 font-medium hidden md:table-cell">Court</th>
+                  <th className="text-left py-3 px-4 font-medium hidden lg:table-cell">Duration</th>
+                  <th className="text-left py-3 px-4 font-medium hidden sm:table-cell">Date</th>
+                  <th className="text-left py-3 px-4 font-medium">Status</th>
+                  <th className="text-center py-3 px-4 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(isLoading || isSearching) ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td colSpan={7} className="py-4 px-4">
+                        <div className="relative overflow-hidden h-8 bg-gray-200 rounded">
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/70 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : paginatedRecordings.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-12 text-muted-foreground">
+                      <FileText className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                      <p>No recordings found</p>
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedRecordings.map((recording, index) => (
+                    <tr
+                      key={recording.id}
+                      className={`border-b border-gray-100 hover:bg-[#1B4D3E]/5 transition-colors cursor-pointer ${index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                        }`}
+                      onClick={() => handleRecordingClick(recording.id)}
+                    >
+                      <td className="py-3 px-4 font-medium text-[#1B4D3E]">
+                        {recording.case_number}
+                      </td>
+                      <td className="py-3 px-4 text-gray-700 max-w-[200px] truncate">
+                        {recording.title}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 hidden md:table-cell">
+                        {getCourtNameForRecording(recording, courts, courtrooms) || "Unknown"}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 hidden lg:table-cell">
+                        {formatDuration(recording.duration)}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 hidden sm:table-cell">
+                        {new Date(recording.date_stamp).toLocaleDateString()}
+                      </td>
+                      <td className="py-3 px-4 min-w-[120px]">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${recording.status === "completed" || recording.status === "Completed"
+                            ? "bg-green-100 text-green-700"
+                            : recording.status === "pending" || recording.status === "Pending"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : recording.status === "processing" || recording.status === "Processing"
+                                ? "bg-blue-100 text-blue-700"
+                                : recording.status?.includes("failed")
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-gray-100 text-gray-600"
+                            }`}
+                          title={recording.status || "Open"}
+                        >
+                          {(recording.status || "Open").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="bg-[#1B4D3E] hover:bg-[#153e32] text-white rounded-md text-xs px-3"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRecordingClick(recording.id);
+                          }}
+                        >
+                          View
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
                 )}
-                {cacheStatus === "fresh" && (
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span>Fresh</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-4">
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {!isLoading && paginatedRecordings.length > 0 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+              <p className="text-sm text-muted-foreground">
+                Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalCount)} of {totalCount} recordings
+              </p>
+
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={refreshRecordings}
-                  disabled={isRefreshing}
-                  className="transition-all duration-200 hover:bg-[#1B4D3E]/10 hover:border-[#1B4D3E] focus:ring-2 focus:ring-[#1B4D3E]/20">
-                  <RefreshCw
-                    className={`h-4 w-4 mr-2 ${
-                      isRefreshing ? "animate-spin" : ""
-                    }`}
-                  />
-                  {isRefreshing ? "Refreshing..." : "Refresh"}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-md"
+                >
+                  <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <div className="relative group">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground transition-colors duration-200 group-focus-within:text-[#1B4D3E]" />
-                  <Input
-                    placeholder="Search recordings..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 w-[200px] transition-all duration-200 focus:ring-2 focus:ring-[#1B4D3E]/20 focus:border-[#1B4D3E]"
-                  />
-                </div>
-                <Select
-                  value={pageSize.toString()}
-                  onValueChange={(value) => {
-                    setPageSize(Number(value));
-                    setCurrentPage(1);
-                  }}>
-                  <SelectTrigger className="w-[100px] transition-all duration-200 hover:shadow-md focus:ring-2 focus:ring-[#1B4D3E]/20">
-                    <SelectValue placeholder="Show" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="30">30</SelectItem>
-                    <SelectItem value="9999">All</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="rounded-md"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {isLoading ? (
-                <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : paginatedRecordings.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No recordings found
-                </div>
-              ) : (
-                <>
-                  {paginatedRecordings.map((recording, index) => (
-                    <div
-                      key={recording.id}
-                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted/70 transition-all duration-200 hover:scale-[1.02] hover:shadow-md group"
-                      onClick={() => handleRecordingClick(recording.id)}
-                      style={{
-                        animationDelay: `${index * 100}ms`,
-                        animation: "slideInRight 0.4s ease-out forwards",
-                      }}>
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium transition-colors duration-200 group-hover:text-[#1B4D3E]">
-                          {recording.title}
-                        </p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground transition-colors duration-200">
-                          <span className="font-medium">
-                            Case #{recording.case_number}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {getCourtNameForRecording(
-                              recording,
-                              courts,
-                              courtrooms
-                            )}{" "}
-                            - {recording.courtroom}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            Duration: {formatDuration(recording.duration)}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {new Date(
-                              recording.date_stamp
-                            ).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="transition-all duration-200 group-hover:scale-110 group-hover:bg-[#1B4D3E]/10">
-                        <FileText className="h-4 w-4 transition-colors duration-200 group-hover:text-[#1B4D3E]" />
-                      </Button>
-                    </div>
-                  ))}
+          )}
+        </CardContent>
+      </Card>
 
-                  {/* Pagination */}
-                  <div className="flex items-center justify-between pt-4 animate-[fadeIn_0.5s_ease-out]">
-                    <p className="text-sm text-muted-foreground transition-colors duration-200">
-                      Showing {Math.min(pageSize, filteredRecordings.length)} of{" "}
-                      {filteredRecordings.length} recordings
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setCurrentPage((prev) => Math.max(1, prev - 1))
-                        }
-                        disabled={currentPage === 1}
-                        className="transition-all duration-200 hover:scale-105 hover:shadow-md disabled:hover:scale-100 disabled:hover:shadow-none group">
-                        <ChevronLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setCurrentPage((prev) =>
-                            Math.min(totalPages, prev + 1)
-                          )
-                        }
-                        disabled={currentPage === totalPages}
-                        className="transition-all duration-200 hover:scale-105 hover:shadow-md disabled:hover:scale-100 disabled:hover:shadow-none group">
-                        <ChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+
 
       <AddRecordingModal
         isOpen={isAddRecordingOpen}
         onClose={() => setIsAddRecordingOpen(false)}
         onSuccess={() => {
-          const fetchRecordings = async () => {
-            try {
-              setIsLoading(true);
-              const data = await recordingsApi.getAllRecordings();
-              setRecordings(data);
-            } catch (error) {
-              console.error("Error fetching recordings:", error);
-            } finally {
-              setIsLoading(false);
-            }
-          };
-          fetchRecordings();
+          queryClient.invalidateQueries({ queryKey: ["recordings"] });
+          queryClient.invalidateQueries({ queryKey: ["stats"] });
         }}
         courts={courts}
         courtrooms={courtrooms}
         onUploadStart={(fileName) => {
           setCurrentFileName(fileName);
-          setUploadProgress(0);
           showUploadProgress(fileName, 0);
         }}
         onUploadProgress={(progress) => {
-          setUploadProgress(progress);
           showUploadProgress(currentFileName, progress);
         }}
         onUploadComplete={() => {
           showUploadProgress(currentFileName, 100);
           setTimeout(() => {
-            setUploadProgress(0);
             setCurrentFileName("");
           }, 2000);
         }}
       />
-    </div>
+    </div >
   );
 }

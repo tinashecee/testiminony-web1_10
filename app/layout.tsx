@@ -5,6 +5,9 @@ import { cn } from "@/lib/utils"
 import { Toaster } from "sonner"
 import { AuthProvider } from "@/contexts/AuthContext"
 import ConsoleSilencer from "@/components/ConsoleSilencer"
+import SplashLayout from "@/components/SplashLayout"
+import GlobalLayoutWrapper from "@/components/GlobalLayoutWrapper"
+import { QueryProvider } from "@/components/providers/QueryProvider"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -25,10 +28,16 @@ export default function RootLayout({
         "min-h-screen bg-background text-foreground antialiased"
       )}>
         <ConsoleSilencer />
-        <AuthProvider>
-          {children}
-        </AuthProvider>
-        <Toaster position="top-center" richColors />
+        <SplashLayout>
+          <AuthProvider>
+            <QueryProvider>
+              <GlobalLayoutWrapper>
+                {children}
+              </GlobalLayoutWrapper>
+            </QueryProvider>
+          </AuthProvider>
+        </SplashLayout>
+        <Toaster position="bottom-right" theme="dark" />
       </body>
     </html>
   )

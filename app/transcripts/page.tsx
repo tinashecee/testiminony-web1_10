@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Layout from "../../components/Layout";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -81,9 +80,8 @@ export default function TranscriptsPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `transcript-reports-${
-        new Date().toISOString().split("T")[0]
-      }.csv`;
+      a.download = `transcript-reports-${new Date().toISOString().split("T")[0]
+        }.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -97,95 +95,93 @@ export default function TranscriptsPage() {
   };
 
   return (
-    <Layout>
-      <RoleGuard
-        allowedRoles={[
-          "super_admin",
-          "admin",
-          "judge",
-          "senior_regional_magistrate",
-          "provincial_magistrate",
-          "regional_magistrate",
-          "station_magistrate",
-          "resident_magistrate",
-        ]}>
-        <div className="container mx-auto p-6">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Transcript Reports</h1>
-            <p className="text-muted-foreground">
-              Analyze transcript completion rates, content quality, and
-              management activities.
-            </p>
-          </div>
+    <RoleGuard
+      allowedRoles={[
+        "super_admin",
+        "admin",
+        "judge",
+        "senior_regional_magistrate",
+        "provincial_magistrate",
+        "regional_magistrate",
+        "station_magistrate",
+        "resident_magistrate",
+      ]}>
+      <div className="container mx-auto p-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Transcript Reports</h1>
+          <p className="text-muted-foreground">
+            Analyze transcript completion rates, content quality, and
+            management activities.
+          </p>
+        </div>
 
-          <div className="space-y-6">
-            {/* API Error Banner */}
-            {apiError && (
-              <Card className="border-orange-200 bg-orange-50">
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5" />
-                    <div>
-                      <h4 className="font-semibold text-orange-900">
-                        API Connection Issue
-                      </h4>
-                      <p className="text-sm text-orange-700 mt-1">
-                        {apiError} The reports will show available local data.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Date Range and Export Controls */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  Report Configuration
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium mb-2 block">
-                      Date Range
-                    </label>
-                    <DateRangePicker
-                      startDate={startDate}
-                      endDate={endDate}
-                      onStartDateChange={setStartDate}
-                      onEndDateChange={setEndDate}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={loadAuditData}
-                      disabled={isLoading}
-                      variant="outline">
-                      {isLoading ? "Loading..." : "Refresh"}
-                    </Button>
-                    <Button
-                      onClick={handleExportAll}
-                      className="flex items-center gap-2">
-                      <Download className="w-4 h-4" />
-                      Export All
-                    </Button>
+        <div className="space-y-6">
+          {/* API Error Banner */}
+          {apiError && (
+            <Card className="border-orange-200 bg-orange-50">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-orange-900">
+                      API Connection Issue
+                    </h4>
+                    <p className="text-sm text-orange-700 mt-1">
+                      {apiError} The reports will show available local data.
+                    </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
+          )}
 
-            {/* Transcript Report */}
-            <TranscriptReport
-              auditLogs={auditLogs}
-              dateRange={{ from: new Date(startDate), to: new Date(endDate) }}
-              isLoading={isLoading}
-            />
-          </div>
+          {/* Date Range and Export Controls */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="w-5 h-5" />
+                Report Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+                <div className="flex-1">
+                  <label className="text-sm font-medium mb-2 block">
+                    Date Range
+                  </label>
+                  <DateRangePicker
+                    startDate={startDate}
+                    endDate={endDate}
+                    onStartDateChange={setStartDate}
+                    onEndDateChange={setEndDate}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={loadAuditData}
+                    disabled={isLoading}
+                    variant="outline">
+                    {isLoading ? "Loading..." : "Refresh"}
+                  </Button>
+                  <Button
+                    onClick={handleExportAll}
+                    className="flex items-center gap-2">
+                    <Download className="w-4 h-4" />
+                    Export All
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Transcript Report */}
+          <TranscriptReport
+            auditLogs={auditLogs}
+            dateRange={{ from: new Date(startDate), to: new Date(endDate) }}
+            isLoading={isLoading}
+          />
         </div>
-      </RoleGuard>
-    </Layout>
+      </div>
+    </RoleGuard>
   );
 }
